@@ -1,0 +1,19 @@
+{
+    "python.analysis.typeCheckingMode": "off",
+    "python.analysis.extraPaths": ["."],
+    "python.defaultInterpreterPath": "${workspaceFolder}\\.venv\\Scripts\\python.exe",
+    "python.analysis.diagnosticSeverityOverrides": {
+        "reportMissingImports": "none",
+        "reportMissingModuleSource": "none",
+        "reportGeneralTypeIssues": "none",
+        "reportOptionalMemberAccess": "none",
+        "reportOptionalSubscript": "none",
+        "reportIndexIssue": "none",
+        "reportOperatorIssue": "none",
+        "reportArgumentType": "none",
+        "reportCallIssue": "none",
+        "reportReturnType": "none",
+        "reportAssignmentType": "none",
+        "reportAttributeAccessIssue": "none"
+    }
+}

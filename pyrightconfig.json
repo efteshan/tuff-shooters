@@ -1,0 +1,16 @@
+{
+    "venvPath": ".",
+    "venv": ".venv",
+    "pythonVersion": "3.12",
+    "root": ".",
+    "extraPaths": ["."],
+    "reportMissingImports": "none",
+    "reportMissingModuleSource": "none",
+    "reportGeneralTypeIssues": "none",
+    "reportOptionalMemberAccess": "none",
+    "reportOptionalSubscript": "none",
+    "reportIndexIssue": "none",
+    "reportOperatorIssue": "none",
+    "reportArgumentType": "none",
+    "typeCheckingMode": "off"
+}
