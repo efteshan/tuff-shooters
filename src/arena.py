@@ -1,7 +1,10 @@
 # src/arena.py
 
 import pygame
-from src.constants import GROUND_Y, VIRTUAL_W, VIRTUAL_H, GROUND_COLOR, load_or_placeholder
+from src.constants import (
+    GROUND_Y, VIRTUAL_W, VIRTUAL_H, GROUND_COLOR, load_or_placeholder,
+    GROUND_IMG_SCALE, GROUND_IMG_X_OFFSET, GROUND_IMG_Y_OFFSET, GROUND_SURFACE_FRACTION
+)
 
 
 def _detect_solid_bounds(image, alpha_threshold=30, edge_inset=6,
@@ -519,29 +522,24 @@ class Ground:
             cropped = raw.subsurface(pygame.Rect(
                 0, first_content_y, orig_w, content_h))
 
-            # Scale to full screen width, height proportional
-            target_w = VIRTUAL_W
+            # ── SIZE from constants.py ──
+            target_w = int(VIRTUAL_W * GROUND_IMG_SCALE)
             target_h = int(content_h * (target_w / orig_w))
 
-            # Ensure minimum height covers the ground strip
-            strip_h = VIRTUAL_H - GROUND_Y
-            if target_h < strip_h:
-                target_h = strip_h
+            # Ensure minimum height so the ground looks substantial
+            min_h = 120
+            if target_h < min_h:
+                target_h = min_h
 
             self.ground_image = pygame.transform.smoothscale(
                 cropped, (target_w, target_h))
 
-            # The ground image content starts with spiky grass blades.
-            # We want the flat walkable surface (just below the grass tips)
-            # to sit at GROUND_Y=630, while the grass tips poke ~35px above
-            # that line so players appear to stand ON the ground, not on top of a line.
-            # GROUND_VISUAL_OFFSET controls how far the grass tips rise above GROUND_Y.
-            GROUND_VISUAL_OFFSET = 55  # px — grass tips rise this far above GROUND_Y
-            img_y = GROUND_Y - GROUND_VISUAL_OFFSET
-            self.ground_image_rect = pygame.Rect(0, img_y, target_w, target_h)
+            # ── POSITION from constants.py ──
+            img_x = (VIRTUAL_W - target_w) // 2 + GROUND_IMG_X_OFFSET
+            img_y = int(GROUND_Y - target_h * GROUND_SURFACE_FRACTION) + GROUND_IMG_Y_OFFSET
+            self.ground_image_rect = pygame.Rect(img_x, img_y, target_w, target_h)
 
-            print(f"[GROUND] img placed at y={img_y} | "
-                  f"grass tips at y={img_y} | "
+            print(f"[GROUND] img {target_w}x{target_h} placed at ({img_x},{img_y}) | "
                   f"walkable line at GROUND_Y={GROUND_Y}")
         except Exception as e:
             self.ground_image = None
@@ -684,7 +682,8 @@ class Barrel(pygame.sprite.Sprite):
     def __init__(self, x, y, custom_image=None):
         super().__init__()
         from src.constants import (
-            BARREL_WIDTH, BARREL_HEIGHT, GROUND_Y, create_barrel_art)
+            BARREL_WIDTH, BARREL_HEIGHT, GROUND_Y, create_barrel_art,
+            BARREL_Y_OFFSET)
         self.width  = BARREL_WIDTH
         self.height = BARREL_HEIGHT
 
@@ -702,9 +701,9 @@ class Barrel(pygame.sprite.Sprite):
                 scaled, edge_inset=6, min_solid_fraction=0.3)
             solid_w = max(16, cr - cl)
 
-            # Full visual rect — image bottom sits at GROUND_Y
+            # Full visual rect — image bottom sits at GROUND_Y + offset
             self.rect = pygame.Rect(
-                x, GROUND_Y - target_h, target_w, target_h)
+                x, GROUND_Y - target_h + BARREL_Y_OFFSET, target_w, target_h)
 
             # Narrowed top collision zone — used by check_barrel_collision
             # x offset is relative to self.rect.x
@@ -717,7 +716,7 @@ class Barrel(pygame.sprite.Sprite):
         else:
             self.image = create_barrel_art(self.width, self.height)
             self.rect  = pygame.Rect(
-                x, GROUND_Y - self.height, self.width, self.height)
+                x, GROUND_Y - self.height + BARREL_Y_OFFSET, self.width, self.height)
             # Default: standard inset (matches old hardcoded +8 logic)
             self.solid_x_offset = 8
             self.solid_w        = self.width - 16
@@ -746,10 +745,10 @@ class DestructibleBox(pygame.sprite.Sprite):
         super().__init__()
         from src.constants import (
             BOX_WIDTH, BOX_HEIGHT, GROUND_Y,
-            BOX_MAX_HP, BOX_RESPAWN_TIME
+            BOX_MAX_HP, BOX_RESPAWN_TIME, BOX_Y_OFFSET
         )
         self.base_x = x
-        self.base_y = GROUND_Y - BOX_HEIGHT
+        self.base_y = GROUND_Y - BOX_HEIGHT + BOX_Y_OFFSET
         self.max_hp = BOX_MAX_HP
         self.hp = BOX_MAX_HP
         self.respawn_timer = 0.0
@@ -935,40 +934,55 @@ def create_arena(assets):
     #
     # (x_left, y_top, width) — x_left is left edge of platform
     fixed_platforms = [
-        ( 55, 360, 150),   # far left — low, reachable from ground/barrel
-        ( 900, 455, 155),   # left-center low — stepping stone up
-        ( 550, 250, 170),   # center high — top of the map
-        ( 250, 445, 155),   # right-center low — stepping stone up
-        (1076, 320, 150),   # far right — low, reachable from ground/box
+        ( 55, 315, 150),   # far left — low, reachable from ground/barrel
+        ( 900, 410, 155),   # left-center low — stepping stone up
+        ( 550, 205, 170),   # center high — top of the map
+        ( 250, 400, 155),   # right-center low — stepping stone up
+        (1076, 275, 150),   # far right — low, reachable from ground/box
     ]
 
     platforms = []
+    # Per-platform player Y offsets
+    from src.constants import (
+        PLAYER_PLATFORM_1_Y_OFFSET, PLAYER_PLATFORM_2_Y_OFFSET,
+        PLAYER_PLATFORM_3_Y_OFFSET, PLAYER_PLATFORM_4_Y_OFFSET,
+        PLAYER_PLATFORM_5_Y_OFFSET, PLAYER_BARREL_Y_OFFSET,
+        PLAYER_BOX_Y_OFFSET
+    )
+    plat_offsets = [
+        PLAYER_PLATFORM_1_Y_OFFSET, PLAYER_PLATFORM_2_Y_OFFSET,
+        PLAYER_PLATFORM_3_Y_OFFSET, PLAYER_PLATFORM_4_Y_OFFSET,
+        PLAYER_PLATFORM_5_Y_OFFSET,
+    ]
     for i, (px, py, pw) in enumerate(fixed_platforms):
         # Pick custom image cycling through list
         custom = None
         if plat_images:
             custom = plat_images[i % len(plat_images)]
 
-        platforms.append(
-            Platform(px, py, pw, 20,
+        p = Platform(px, py, pw, 20,
                      assets['platform'],
-                     custom_image=custom))
+                     custom_image=custom)
+        p.player_y_offset = plat_offsets[i] if i < len(plat_offsets) else 0
+        platforms.append(p)
 
     # Load obstacle images
     obs_images = load_obstacle_images()
 
     # Create single barrel + destructible box
     from src.constants import BARREL_X, BOX_X
-    barrels = [
-        Barrel(BARREL_X, GROUND_Y,
-               custom_image=obs_images['barrel']),
-    ]
+    barrel = Barrel(BARREL_X, GROUND_Y,
+                    custom_image=obs_images['barrel'])
+    barrel.player_y_offset = PLAYER_BARREL_Y_OFFSET
+    barrels = [barrel]
+
     # Destructible box — slightly right of center
     box = DestructibleBox(
         BOX_X, GROUND_Y,
         custom_image=obs_images['box'],
         custom_cracked=obs_images['box_cracked']
     )
+    box.player_y_offset = PLAYER_BOX_Y_OFFSET
     
     # Load custom cloud images (if any)
     bg_images     = load_cloud_images("cloud_bg")
@@ -989,11 +1003,23 @@ def create_arena(assets):
 
     # Trampoline clouds — vibrant, interactive
     Cloud._cloud_index = 0
-    trampoline_clouds = [
-        Cloud(730, 350, trampoline=True, shape_id=4,
-               image_list=bounce_images),
-        Cloud(310, 290, trampoline=True, shape_id=6,
-               image_list=bounce_images),
-    ]
+    from src.constants import (
+        PLAYER_CLOUD_1_Y_OFFSET, PLAYER_CLOUD_2_Y_OFFSET,
+        CLOUD_1_EDGE_LEFT, CLOUD_1_EDGE_RIGHT,
+        CLOUD_2_EDGE_LEFT, CLOUD_2_EDGE_RIGHT
+    )
+    cloud_1 = Cloud(730, 307, trampoline=True, shape_id=4,
+                    image_list=bounce_images)
+    cloud_1.player_y_offset = PLAYER_CLOUD_1_Y_OFFSET
+    cloud_1.edge_left  = CLOUD_1_EDGE_LEFT
+    cloud_1.edge_right = CLOUD_1_EDGE_RIGHT
+
+    cloud_2 = Cloud(310, 245, trampoline=True, shape_id=6,
+                    image_list=bounce_images)
+    cloud_2.player_y_offset = PLAYER_CLOUD_2_Y_OFFSET
+    cloud_2.edge_left  = CLOUD_2_EDGE_LEFT
+    cloud_2.edge_right = CLOUD_2_EDGE_RIGHT
+
+    trampoline_clouds = [cloud_1, cloud_2]
 
     return platforms, barrels, box, bg_clouds, trampoline_clouds

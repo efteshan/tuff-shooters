@@ -18,32 +18,152 @@ JUMP_FORCE      = 620
 FAST_FALL_SPEED = 700
 MAX_FALL_SPEED  = 900
 GROUND_FRICTION = 0.82
-GROUND_Y        = 630
-GROUND_LEFT     = 260    # left cliff edge — matches visible ground left
-GROUND_RIGHT    = 1060   # right cliff edge — matches visible ground right
+
+# ═══════════════════════════════════════════════════════════════
+# PLAYER Y OFFSETS — Adjust how players sit on each surface
+# ═══════════════════════════════════════════════════════════════
+# Positive = push player DOWN (into/onto surface)
+# Negative = push player UP (away from surface)
+PLAYER_GROUND_Y_OFFSET     = 2
+PLAYER_PLATFORM_1_Y_OFFSET = 0   # far left platform  (x=55,  y=315)
+PLAYER_PLATFORM_2_Y_OFFSET = 2   # right-low platform (x=900, y=410)
+PLAYER_PLATFORM_3_Y_OFFSET = 0   # center high        (x=550, y=205)
+PLAYER_PLATFORM_4_Y_OFFSET = 0   # left-mid platform  (x=250, y=400)
+PLAYER_PLATFORM_5_Y_OFFSET = 2   # far right platform (x=1076,y=275)
+PLAYER_BARREL_Y_OFFSET     = 8
+PLAYER_BOX_Y_OFFSET        = 8
+
+# ═══════════════════════════════════════════════════════════════
+# PLAYER WALKING LEVEL — The Y line where players walk/stand
+# ═══════════════════════════════════════════════════════════════
+# Decrease = players walk HIGHER on screen (move up)
+# Increase = players walk LOWER on screen (move down)
+GROUND_Y        = 570
+
 CLIFF_DEATH_Y   = 715    # player.rect.bottom >= this triggers cliff death
+
+# ═══════════════════════════════════════════════════════════════
+# GROUND IMAGE TUNING — Change these to resize/reposition ground
+# ═══════════════════════════════════════════════════════════════
+GROUND_IMG_SCALE        = 0.58   # Image width as fraction of screen (0.40 = small, 1.0 = full width)
+GROUND_IMG_X_OFFSET     = 0      # Shift image left (-) or right (+) from center, in pixels
+GROUND_IMG_Y_OFFSET     = 14     # Shift image up (-) or down (+) from auto position, in pixels
+GROUND_SURFACE_FRACTION = 0.20   # Where GROUND_Y sits in the image (0.0 = top, 0.5 = middle, 1.0 = bottom)
+
+# ═══════════════════════════════════════════════════════════════
+# CLIFF / FALL-OFF EDGES — Where the player falls off the ground
+# ═══════════════════════════════════════════════════════════════
+# Decrease GROUND_LEFT = player falls off sooner on the LEFT side
+# Increase GROUND_LEFT = player can walk further LEFT before falling
+# Increase GROUND_RIGHT = player can walk further RIGHT before falling
+# Decrease GROUND_RIGHT = player falls off sooner on the RIGHT side
+GROUND_LEFT     = 270    # left cliff edge (pixels from left screen edge)
+GROUND_RIGHT    = 1005   # right cliff edge (pixels from left screen edge)
 
 # Barrel size (taller than player by 23 pixels)
 BARREL_WIDTH    = 58  # Widest point in the middle
 BARREL_HEIGHT   = 85  # Slightly taller than 72px player
 
 # Combat
-BULLET_SPEED    = 950
-BULLET_DAMAGE   = 5
-MAX_AMMO        = 67
+BULLET_SPEED    = 1500
+BULLET_DAMAGE   = 7
+MAX_AMMO        = 37
 KNIFE_DAMAGE    = 10
 KNIFE_RANGE     = 55
 KNIFE_COOLDOWN  = 0.35
 
+DASH_SPEED      = 800
+DASH_DURATION   = 0.2
+DASH_COOLDOWN   = 2
+
+HIT_STUN_DURATION = 0.2
+KNOCKBACK_FORCE   = 300
+
 # ── OBSTACLES ────────────────────────────────
 # Single barrel — slightly left of screen center
-BARREL_X        = 460          # shifted further left of center
+BARREL_X        = 500          # shifted further left of center
 # Single box — slightly right of screen center
 BOX_X           = 760          # shifted further right of center
-BOX_WIDTH       = 58
-BOX_HEIGHT      = 72
+BOX_WIDTH       = 60
+BOX_HEIGHT      = 74
 BOX_MAX_HP      = 50           # box destroyed at 0 HP
 BOX_RESPAWN_TIME = 20.0        # seconds until box reappears after burst
+
+# ═══════════════════════════════════════════════════════════════
+# OBSTACLE Y OFFSET — Move barrel and box up(-) or down(+)
+# ═══════════════════════════════════════════════════════════════
+# These shift the barrel/box independently from GROUND_Y.
+# 0 = sits exactly on the walking level
+# -20 = floats 20px above the walking level
+# +20 = sinks 20px below the walking level
+BARREL_Y_OFFSET = 2
+BOX_Y_OFFSET    = 2
+
+# ═══════════════════════════════════════════════════════════════
+# BARREL / BOX FALLING EDGE OFFSETS
+# ═══════════════════════════════════════════════════════════════
+# Controls where the player falls off the top of barrel/box.
+# Increase = player falls off sooner (narrower walkable top)
+# Decrease / negative = player can walk further toward the edge
+BARREL_EDGE_LEFT   = 10
+BARREL_EDGE_RIGHT  = 13
+BOX_EDGE_LEFT      = 23
+BOX_EDGE_RIGHT     = 13
+
+# ═══════════════════════════════════════════════════════════════
+# TRAMPOLINE CLOUD OFFSETS
+# ═══════════════════════════════════════════════════════════════
+# Player Y offsets (adjust the bounce trigger point):
+#   Positive = trigger lower, Negative = trigger higher
+PLAYER_CLOUD_1_Y_OFFSET = 25   # cloud at (730, 305)
+PLAYER_CLOUD_2_Y_OFFSET = 25   # cloud at (310, 245)
+# Edge offsets (narrowing the bounce zone):
+#   Increase = player bounces only from narrower center area
+CLOUD_1_EDGE_LEFT   = -25
+CLOUD_1_EDGE_RIGHT  = 0
+CLOUD_2_EDGE_LEFT   = -10
+CLOUD_2_EDGE_RIGHT  = -10
+
+# ═══════════════════════════════════════════════════════════════
+# JUMP ANIMATION TUNING
+# ═══════════════════════════════════════════════════════════════
+# Phase velocity thresholds (vel_y values)
+JUMP_LAUNCH_VEL     = -400    # below this = launch burst
+JUMP_RISE_VEL       = -100    # between launch and this = rising
+JUMP_FALL_VEL       = 100     # above this = falling
+
+# Leg angles per phase (degrees)
+JUMP_LEG_LAUNCH     = 25      # tucked on launch
+JUMP_LEG_RISE       = 15      # spread while rising
+JUMP_LEG_APEX       = 20      # wide spread at peak
+JUMP_LEG_FALL       = 18      # braced forward on fall
+JUMP_LEG_LAND       = 30      # deep bend on landing
+
+# Arm angles per phase (degrees)
+JUMP_ARM_LAUNCH     = -15     # swept back
+JUMP_ARM_RISE       = 20      # raised up
+JUMP_ARM_APEX       = 30      # spread wide
+JUMP_ARM_FALL       = 25      # trailing up
+JUMP_ARM_LAND       = 15      # swept forward
+
+# Torso lean per phase (degrees)
+JUMP_TORSO_LAUNCH   = -4      # lean back
+JUMP_TORSO_FALL     = 5       # lean forward
+JUMP_TORSO_LAND     = 6       # compress on land
+
+# Head tilt per phase (degrees)
+JUMP_HEAD_LAUNCH    = -6      # look up
+JUMP_HEAD_FALL      = 6       # look down
+
+# Lerp speeds — higher = snappier, lower = smoother
+# Different speeds per body part for overlapping action
+JUMP_LERP_LEGS      = 8.0     # legs lead — moderate speed
+JUMP_LERP_TORSO     = 7.0     # follows legs
+JUMP_LERP_ARMS      = 6.0     # trails behind — smooth
+JUMP_LERP_HEAD      = 5.0     # slowest — naturalistic lag
+
+# Land recovery duration (seconds)
+JUMP_LAND_DURATION  = 0.20
 
 # ── SHOTGUN ──────────────────────────────────
 SHOTGUN_PELLETS       = 7      # pellets per shot
@@ -56,6 +176,16 @@ SHOTGUN_COOLDOWN      = 1.2    # seconds between shots
 SHOTGUN_AMMO          = 5      # reloads (each reload = full pellet spread)
 SHOTGUN_PICKUP_LIFETIME = 10.0 # seconds shotgun stays on ground before despawn
 SHOTGUN_ICON_COLOR    = (180, 80, 30)  # orange-brown for HUD icon
+
+# ── BAZOOKA ──────────────────────────────────
+BAZOOKA_SPEED         = 450
+BAZOOKA_DAMAGE        = 25     # Direct hit damage
+BAZOOKA_SPLASH_DAMAGE = 15     # Splash damage
+BAZOOKA_SPLASH_RADIUS = 120
+BAZOOKA_COOLDOWN      = 1.5
+BAZOOKA_AMMO          = 3
+BAZOOKA_PICKUP_LIFETIME = 10.0
+BAZOOKA_ICON_COLOR    = (80, 120, 80) # green for HUD icon
 
 # Physics
 GRAVITY         = 1800
@@ -72,7 +202,36 @@ HEALTH_SPAWN_MAX     = 25.0
 AMMO_SPAWN_MIN       = 8.0
 AMMO_SPAWN_MAX       = 12.0
 AMMO_PACK_LIFETIME_MIN = 3.0
-AMMO_PACK_LIFETIME_MAX = 4.0
+AMMO_PACK_LIFETIME_MAX = 5.0
+MEDKIT_LIFETIME_MIN    = 8.0
+MEDKIT_LIFETIME_MAX    = 12.0
+
+# ═══════════════════════════════════════════════════════════════
+# CUSTOM PICKUP IMAGE SIZES — Change to resize custom images
+# ═══════════════════════════════════════════════════════════════
+# Place custom images at:
+#   assets/pickups/medkit.png   — custom medkit / health pack
+#   assets/pickups/ammo_box.png — custom ammo box
+# If the file is missing, procedural pixel art is used instead.
+# Width and height below control the DISPLAY size (pixels).
+MEDKIT_DISPLAY_W     = 32
+MEDKIT_DISPLAY_H     = 28
+AMMOBOX_DISPLAY_W    = 32
+AMMOBOX_DISPLAY_H    = 28
+
+# ═══════════════════════════════════════════════════════════════
+# PICKUP SPAWN POSITION OFFSETS — Fine-tune where pickups appear
+# ═══════════════════════════════════════════════════════════════
+# GROUND offsets: shift pickups on the ground level
+#   Y: negative = higher (away from ground), positive = lower (into ground)
+#   X: negative = shift left, positive = shift right
+PICKUP_GROUND_Y_OFFSET  = 0
+PICKUP_GROUND_X_OFFSET  = 0
+# PLATFORM offsets: shift pickups on platforms
+#   Y: negative = higher (away from platform), positive = lower (onto platform)
+#   X: negative = shift left, positive = shift right
+PICKUP_PLATFORM_Y_OFFSET = 6
+PICKUP_PLATFORM_X_OFFSET = 0
 
 # KO
 KO_DISPLAY_DURATION  = 3.0
@@ -120,6 +279,7 @@ CONTROLS = {
         "crouch": pygame.K_s,
         "shoot": pygame.K_c,
         "knife": pygame.K_v,
+        "dash":  pygame.K_e,
     },
     "p2": {
         "left":  pygame.K_j,
@@ -128,6 +288,7 @@ CONTROLS = {
         "crouch": pygame.K_k,
         "shoot": pygame.K_n,
         "knife": pygame.K_b,
+        "dash":  pygame.K_o,
     }
 }
 

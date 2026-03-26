@@ -317,15 +317,26 @@ class HUD:
             bar_w, bar_h,
             p1.health / 100.0)
 
-        # Ammo
+        # Ammo P1
         p1_ammo_icon_x = 12
         p1_ammo_bar_x  = p1_ammo_icon_x + bullet_w + icon_gap
+        
+        # Calculate fraction based on current weapon
+        if p1.has_bazooka:
+            from src.constants import BAZOOKA_AMMO
+            p1_ammo_frac = p1.bazooka_ammo / max(1, BAZOOKA_AMMO)
+        elif p1.has_shotgun:
+            from src.constants import SHOTGUN_AMMO
+            p1_ammo_frac = p1.shotgun_ammo / max(1, SHOTGUN_AMMO)
+        else:
+            p1_ammo_frac = p1.ammo / max(1, p1.max_ammo)
+            
         self._draw_bar(screen,
             self.bullet_icon,
             p1_ammo_icon_x, row2_y,
             p1_ammo_bar_x,  row2_y,
             bar_w, bar_h,
-            p1.ammo / 67.0)
+            p1_ammo_frac)
 
         # ── P2 RIGHT ───────────────────────────────
         # P2 — mirrored from right edge
@@ -349,12 +360,21 @@ class HUD:
             flipped=True)
 
         # Ammo bar P2
+        if p2.has_bazooka:
+            from src.constants import BAZOOKA_AMMO
+            p2_ammo_frac = p2.bazooka_ammo / max(1, BAZOOKA_AMMO)
+        elif p2.has_shotgun:
+            from src.constants import SHOTGUN_AMMO
+            p2_ammo_frac = p2.shotgun_ammo / max(1, SHOTGUN_AMMO)
+        else:
+            p2_ammo_frac = p2.ammo / max(1, p2.max_ammo)
+            
         self._draw_bar(screen,
             self.bullet_icon,
             p2_bullet_icon_x, row2_y,
             p2_ammo_bar_x, row2_y,
             bar_w, bar_h,
-            p2.ammo / 67.0,
+            p2_ammo_frac,
             flipped=True)
 
         # Game is RUNNING → show PAUSE button (so player can pause)

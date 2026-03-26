@@ -3,10 +3,16 @@
 import pygame
 from src.physics import PhysicsObject
 from src.animation import SkeletalBody
+from src.bullet import Bullet, ShotgunPellet, Rocket
 from src.constants import (
     PLAYER_WIDTH, PLAYER_HEIGHT, PLAYER_SPEED, JUMP_FORCE, FAST_FALL_SPEED,
     GROUND_Y, GROUND_LEFT, GROUND_RIGHT, CLIFF_DEATH_Y,
-    KNIFE_RANGE, KNIFE_DAMAGE, KNIFE_COOLDOWN, MAX_AMMO
+    KNIFE_RANGE, KNIFE_DAMAGE, KNIFE_COOLDOWN, MAX_AMMO,
+    DASH_SPEED, DASH_DURATION, DASH_COOLDOWN,
+    HIT_STUN_DURATION, KNOCKBACK_FORCE,
+    SHOTGUN_AMMO, BAZOOKA_COOLDOWN, BAZOOKA_AMMO,
+    BARREL_EDGE_LEFT, BARREL_EDGE_RIGHT,
+    BOX_EDGE_LEFT, BOX_EDGE_RIGHT
 )
 
 
@@ -48,10 +54,23 @@ class Player(PhysicsObject, pygame.sprite.Sprite):
         self.knife_hit_pending = False
         self.knife_hit_timer = 0.0
         
-        # Shotgun state
+        # Hit Stun
+        self.hit_stun_timer = 0.0
+        
+        # Dash state
+        self.dash_timer = 0.0
+        self.dash_cooldown = 0.0
+        self.is_dashing = False
+        self.dash_held_last = False
+
+        # Weapon states
         self.has_shotgun = False
         self.shotgun_ammo = 0
         self.shotgun_cooldown = 0.0
+        
+        self.has_bazooka = False
+        self.bazooka_ammo = 0
+        self.bazooka_cooldown = 0.0
         
         # Skeletal body
         self.body = SkeletalBody(player_id, assets)
@@ -70,35 +89,75 @@ class Player(PhysicsObject, pygame.sprite.Sprite):
         if not self.alive:
             return
         
+        # Cooldowns
+        if self.dash_cooldown > 0:
+            self.dash_cooldown -= dt
+            
+        if self.hit_stun_timer > 0:
+            self.hit_stun_timer -= dt
+            # Still apply dash physics if dashing, but can't change direction while stunned
+            if self.is_dashing:
+                self.dash_timer -= dt
+                if self.dash_timer <= 0:
+                    self.is_dashing = False
+            self.apply_friction(moving=False)
+            self.update_rect()
+            return
+            
         ctrl = self.controls
         moving = False
         
-        # Horizontal movement
-        if keys[ctrl["left"]]:
-            self.vel_x = -PLAYER_SPEED
-            self.facing = -1
-            moving = True
-            if self.on_ground:
-                self.state = "WALKING"
-        elif keys[ctrl["right"]]:
-            self.vel_x = PLAYER_SPEED
-            self.facing = 1
-            moving = True
-            if self.on_ground:
-                self.state = "WALKING"
-        else:
-            self.vel_x = 0
-            if self.on_ground and self.state == "WALKING":
-                self.state = "IDLE"
+        # Handle Dash
+        if "dash" in ctrl and keys[ctrl["dash"]] and not self.dash_held_last and self.dash_cooldown <= 0:
+            self.is_dashing = True
+            self.dash_timer = DASH_DURATION
+            self.dash_cooldown = DASH_COOLDOWN
+        if "dash" in ctrl:
+            self.dash_held_last = keys[ctrl["dash"]]
+            
+        if self.is_dashing:
+            self.dash_timer -= dt
+            if self.dash_timer <= 0:
+                self.is_dashing = False
+            else:
+                self.vel_x = DASH_SPEED * self.facing
+                moving = True
+                
+                # High-performance dash dust purely using primitive fast particles
+                if self.game and hasattr(self.game, 'particles') and getattr(self, '_dust_timer', 0) <= 0:
+                    dust_x = self.x + (0 if self.facing == 1 else PLAYER_WIDTH)
+                    dust_y = self.y + PLAYER_HEIGHT - 10
+                    self.game.particles.spawn_dash_dust(dust_x, dust_y, self.facing)
+                    self._dust_timer = 0.05
+                self._dust_timer = getattr(self, '_dust_timer', 0) - dt
+
+        if not self.is_dashing:
+            # Horizontal movement
+            if keys[ctrl["left"]]:
+                self.vel_x = -PLAYER_SPEED
+                self.facing = -1
+                moving = True
+                if self.on_ground:
+                    self.state = "WALKING"
+            elif keys[ctrl["right"]]:
+                self.vel_x = PLAYER_SPEED
+                self.facing = 1
+                moving = True
+                if self.on_ground:
+                    self.state = "WALKING"
+            else:
+                self.vel_x = 0
+                if self.on_ground and self.state == "WALKING":
+                    self.state = "IDLE"
         
-        # Jump — only when on ground
-        if keys[ctrl["jump"]] and self.on_ground:
+        # Jump — only when on ground and not dashing
+        if keys[ctrl["jump"]] and self.on_ground and not self.is_dashing:
             self.vel_y = -JUMP_FORCE
             self.on_ground = False
             self.state = "JUMPING"
         
         # Crouch / Fast Fall
-        if keys[ctrl["crouch"]]:
+        if keys[ctrl["crouch"]] and not self.is_dashing:
             if self.on_ground:
                 self.state = "CROUCHING"
             else:
@@ -106,7 +165,9 @@ class Player(PhysicsObject, pygame.sprite.Sprite):
         
         # Shoot — detect NEW press this frame (not held)
         if keys[ctrl["shoot"]] and not self.shoot_held_last:
-            if self.has_shotgun and self.shotgun_ammo > 0:
+            if self.has_bazooka and self.bazooka_ammo > 0:
+                self.try_bazooka()
+            elif self.has_shotgun and self.shotgun_ammo > 0:
                 self.try_shotgun()
             else:
                 self.try_shoot()
@@ -131,18 +192,29 @@ class Player(PhysicsObject, pygame.sprite.Sprite):
         # Bug fix #3: Check ammo > 0 BEFORE decrementing
         self.ammo = max(0, self.ammo - 1)
         
-        # Spawn bullet at gun-hand position
-        gun_x = self.x + (PLAYER_WIDTH + 5) if self.facing == 1 else self.x - 5
-        gun_y = self.y + 20
+        # Determine exact particle spawn position from body skeletal math
+        if hasattr(self.body, 'muzzle_x') and self.body.muzzle_x != 0:
+            flash_x, flash_y = self.body.muzzle_x, self.body.muzzle_y
+        else:
+            flash_x = self.x + (PLAYER_WIDTH + 8) if self.facing == 1 else self.x - 8
+            flash_y = self.y + 16
+
+        # Spawn bullet at gun-hand position (head/shoulder level)
+        gun_x = self.x + (PLAYER_WIDTH + 8) if self.facing == 1 else self.x - 8
+        gun_y = self.y + 16
         
         # Import here to avoid circular dependency
-        from src.bullet import Bullet
         bullet = Bullet(gun_x, gun_y, self.facing, self.player_id)
         if self.game:
             self.game.bullet_group.add(bullet)
+            if hasattr(self.game, 'camera'):
+                self.game.camera.add_shake(2.0, 0.1)
+            if hasattr(self.game, 'particles'):
+                self.game.particles.spawn_muzzle_flash(flash_x, flash_y, self.facing, size=0.7)
+                self.game.particles.spawn_sparks(flash_x, flash_y)
         
         # Trigger gun recoil animation
-        self.body.trigger_gun_recoil()
+        self.body.trigger_gun_recoil("pistol")
         if self.audio_manager:
             self.audio_manager.play_sound("shoot")
     
@@ -166,7 +238,6 @@ class Player(PhysicsObject, pygame.sprite.Sprite):
             SHOTGUN_PELLETS, SHOTGUN_SPREAD_DEG,
             SHOTGUN_COOLDOWN
         )
-        from src.bullet import ShotgunPellet
 
         if self.shotgun_cooldown > 0 or self.shotgun_ammo <= 0:
             return
@@ -179,9 +250,9 @@ class Player(PhysicsObject, pygame.sprite.Sprite):
             self.has_shotgun = False
 
         # Spread: evenly distribute pellets across ±SHOTGUN_SPREAD_DEG
-        gun_x = (self.x + PLAYER_WIDTH + 5
-                 if self.facing == 1 else self.x - 5)
-        gun_y = self.y + 25
+        gun_x = (self.x + PLAYER_WIDTH + 8
+                 if self.facing == 1 else self.x - 8)
+        gun_y = self.y + 16
 
         if SHOTGUN_PELLETS == 1:
             angles = [0]
@@ -196,8 +267,54 @@ class Player(PhysicsObject, pygame.sprite.Sprite):
             if self.game:
                 self.game.bullet_group.add(pellet)
 
+        # Particle coordinates (track tip of barrel perfectly)
+        if hasattr(self.body, 'muzzle_x') and self.body.muzzle_x != 0:
+            flash_x, flash_y = self.body.muzzle_x, self.body.muzzle_y
+        else:
+            flash_x, flash_y = gun_x, gun_y
+
         # Trigger gun recoil animation — stronger kick
-        self.body.trigger_gun_recoil()
+        self.body.trigger_gun_recoil("shotgun")
+        if self.game and hasattr(self.game, 'camera'):
+            self.game.camera.add_shake(7.0, 0.2)
+            if hasattr(self.game, 'particles'):
+                self.game.particles.spawn_muzzle_flash(flash_x, flash_y, self.facing, size=1.5)
+                self.game.particles.spawn_sparks(flash_x, flash_y)
+        if self.audio_manager:
+            self.audio_manager.play_sound("shoot")
+            
+    def try_bazooka(self):
+        """Fire the bazooka."""
+
+        if self.bazooka_cooldown > 0 or self.bazooka_ammo <= 0:
+            return
+
+        self.bazooka_ammo -= 1
+        self.bazooka_cooldown = BAZOOKA_COOLDOWN
+
+        if self.bazooka_ammo <= 0:
+            self.has_bazooka = False
+
+        gun_x = (self.x + PLAYER_WIDTH + 8
+                 if self.facing == 1 else self.x - 8)
+        gun_y = self.y + 12  # Bazooka slightly higher onto shoulder/head level
+
+        rocket = Rocket(gun_x, gun_y, self.facing, self.player_id)
+        
+        if hasattr(self.body, 'muzzle_x') and self.body.muzzle_x != 0:
+            flash_x, flash_y = self.body.muzzle_x, self.body.muzzle_y
+        else:
+            flash_x, flash_y = gun_x, gun_y
+
+        if self.game:
+            self.game.bullet_group.add(rocket)
+            if hasattr(self.game, 'camera'):
+                self.game.camera.add_shake(12.0, 0.3)
+            if hasattr(self.game, 'particles'):
+                self.game.particles.spawn_muzzle_flash(flash_x, flash_y, self.facing, size=2.0)
+                self.game.particles.spawn_sparks(flash_x, flash_y)
+
+        self.body.trigger_gun_recoil("bazooka")
         if self.audio_manager:
             self.audio_manager.play_sound("shoot")
     
@@ -207,6 +324,8 @@ class Player(PhysicsObject, pygame.sprite.Sprite):
             self.knife_cooldown -= dt
         if self.shotgun_cooldown > 0:
             self.shotgun_cooldown -= dt
+        if self.bazooka_cooldown > 0:
+            self.bazooka_cooldown -= dt
         
         if self.knife_hit_pending:
             self.knife_hit_timer -= dt
@@ -219,21 +338,43 @@ class Player(PhysicsObject, pygame.sprite.Sprite):
                     if knife_box.colliderect(opp_box):
                         hit_x = (knife_box.centerx + opp_box.centerx) // 2
                         hit_y = (knife_box.centery + opp_box.centery) // 2
-                        killed = opponent.take_damage(KNIFE_DAMAGE, (hit_x, hit_y))
+                        kb = KNOCKBACK_FORCE if self.facing == 1 else -KNOCKBACK_FORCE
+                        killed = opponent.take_damage(KNIFE_DAMAGE, (hit_x, hit_y), kb)
                         particle_system.spawn_blood(hit_x, hit_y)
                         if killed and self.game:
                             self.game._trigger_ko(opponent.player_id)
     
-    def take_damage(self, amount: int, hit_pos: tuple):
+    def take_damage(self, amount: int, hit_pos: tuple, knockback_x: float = 0.0):
         """Apply damage. Returns True if this hit killed the player."""
         if not self.alive:
             return False
+            
+        # Add hit-stop based on damage dealt (heavy hits = longer screen pause)
+        if self.game and hasattr(self.game, 'add_hit_stop'):
+            # e.g., 25 damage (bazooka) -> 0.15s, 5 damage (bullet) -> 0.03s
+            freeze_time = min(0.2, amount * 0.006)
+            self.game.add_hit_stop(freeze_time)
         
         # Bug fix #4: Use max to prevent negative health
         self.health = max(0, self.health - amount)
         
+        # Trigger hit flash visual effect
+        self.body.trigger_hit()
+        
+        if self.health > 0 and knockback_x != 0:
+            self.vel_x = knockback_x
+            self.hit_stun_timer = HIT_STUN_DURATION
+        
         if self.health <= 0:
-            self.die()
+            # Determine hit direction for directional ragdoll
+            hit_dir = 1 if knockback_x > 0 else (-1 if knockback_x < 0 else 0)
+            self.die(hit_dir=hit_dir)
+            
+            # Tier 6: Longer hit-stop + screen shake on kill
+            if self.game and hasattr(self.game, 'add_hit_stop'):
+                self.game.add_hit_stop(0.1)  # brief dramatic pause
+            if self.game and hasattr(self.game, 'camera'):
+                self.game.camera.add_shake(4, 0.2)
             return True
         return False
     
@@ -250,18 +391,27 @@ class Player(PhysicsObject, pygame.sprite.Sprite):
     
     def pickup_shotgun(self):
         """Pick up a shotgun from the world. Grants full shotgun ammo."""
-        from src.constants import SHOTGUN_AMMO
         self.has_shotgun = True
         self.shotgun_ammo = SHOTGUN_AMMO
         self.shotgun_cooldown = 0.0
+        self.has_bazooka = False
+        if self.audio_manager:
+            self.audio_manager.play_sound("pickup")
+            
+    def pickup_bazooka(self):
+        """Pick up a bazooka from the world."""
+        self.has_bazooka = True
+        self.bazooka_ammo = BAZOOKA_AMMO
+        self.bazooka_cooldown = 0.0
+        self.has_shotgun = False
         if self.audio_manager:
             self.audio_manager.play_sound("pickup")
     
-    def die(self):
+    def die(self, hit_dir=0):
         """Kill player and trigger ragdoll."""
         self.alive = False
         self.state = "DEAD"
-        self.body.trigger_ragdoll(self.x, self.y, self.facing)
+        self.body.trigger_ragdoll(self.x, self.y, self.facing, hit_dir=hit_dir)
         if self.audio_manager:
             self.audio_manager.play_sound("player_death")
     
@@ -270,7 +420,12 @@ class Player(PhysicsObject, pygame.sprite.Sprite):
         if not self.alive:
             return
         self.health = 0
-        self.die()
+        self.alive = False
+        self.state = "DEAD"
+        # Tier 4: Cliff deaths use tumble mode (whole body spins off)
+        self.body.trigger_ragdoll(self.x, self.y, self.facing, hit_dir=0, is_cliff=True)
+        if self.audio_manager:
+            self.audio_manager.play_sound("player_death")
         if self.game:
             self.game._trigger_ko(self.player_id)
     
@@ -282,6 +437,9 @@ class Player(PhysicsObject, pygame.sprite.Sprite):
     def check_platform_collision(self, platforms):
         """Check and resolve platform collisions (one-way platforms)."""
         player_rect = self.get_rect()
+        # Extend 2px below feet so standing-on-edge still detects overlap
+        feet_probe = pygame.Rect(player_rect.x, player_rect.y,
+                                  player_rect.width, player_rect.height + 2)
         
         for plat in platforms:
             plat_rect = plat.rect
@@ -289,10 +447,10 @@ class Player(PhysicsObject, pygame.sprite.Sprite):
             # Bug fix #1: Check previous frame position to prevent fall-through
             prev_bottom = self.y + self.height - self.vel_y * 0.016  # Approximate dt
             
-            if (player_rect.colliderect(plat_rect) and
+            if (feet_probe.colliderect(plat_rect) and
                     prev_bottom <= plat_rect.top + 5 and
                     self.vel_y >= 0):
-                self.y = plat_rect.top - self.height
+                self.y = plat_rect.top - self.height + getattr(plat, 'player_y_offset', 0)
                 self.vel_y = 0
                 self.on_ground = True
                 self.update_rect()
@@ -323,6 +481,18 @@ class Player(PhysicsObject, pygame.sprite.Sprite):
             if (player_rect.colliderect(cloud_top) and
                     prev_bottom <= cloud.rect.top + cy_off + 8 and
                     self.vel_y >= 0):
+                # Check if player center is within cloud walkable edges
+                center_x = self.x + self.width / 2
+                c_edge_l = getattr(cloud, 'edge_left', 0)
+                c_edge_r = getattr(cloud, 'edge_right', 0)
+                walk_left  = cloud_top.left + c_edge_l
+                walk_right = cloud_top.right - c_edge_r
+                if center_x < walk_left or center_x > walk_right:
+                    continue  # player misses the cloud edge
+                # Apply per-cloud Y offset to bounce trigger
+                y_off = getattr(cloud, 'player_y_offset', 0)
+                if y_off != 0:
+                    self.y += y_off
                 # Launch upward — stronger than normal jump
                 self.vel_y    = -cloud.bounce_force
                 self.on_ground = False
@@ -333,33 +503,41 @@ class Player(PhysicsObject, pygame.sprite.Sprite):
     def check_barrel_collision(self, barrels):
         """Check and resolve barrel collisions (solid obstacles)."""
         player_rect = self.get_rect()
+        # Extend 2px below feet so standing-on-edge still detects overlap
+        feet_probe = pygame.Rect(player_rect.x, player_rect.y,
+                                  player_rect.width, player_rect.height + 2)
         
         for barrel in barrels:
             # Use a narrower top collision zone matching
             # the visual barrel top width (not full rect width)
             barrel_top_zone = pygame.Rect(
-                barrel.rect.x + barrel.solid_x_offset,
+                barrel.rect.x + barrel.solid_x_offset + BARREL_EDGE_LEFT,
                 barrel.rect.y  + barrel.solid_y_offset,
-                barrel.solid_w,
+                max(1, barrel.solid_w - BARREL_EDGE_LEFT - BARREL_EDGE_RIGHT),
                 6
             )
             prev_feet = self.y + PLAYER_HEIGHT - self.vel_y * 0.016
-            if (player_rect.colliderect(barrel_top_zone) and
+            if (feet_probe.colliderect(barrel_top_zone) and
                     prev_feet <= barrel.rect.top + 8 and
                     self.vel_y >= 0):
-                self.y = barrel.rect.top - PLAYER_HEIGHT
+                self.y = barrel.rect.top - PLAYER_HEIGHT + getattr(barrel, 'player_y_offset', 0)
                 self.vel_y = 0
                 self.on_ground = True
                 self.update_rect()
                 continue
             
-            # Side collision uses solid bounds rect
+            # Side collision — uses same edge offsets as the top zone
+            # so the side rect doesn't extend beyond the walkable top area
+            # Skip side push entirely if player is near/above barrel top
+            # (falling off edge — let gravity handle it)
             barrel_side_rect = pygame.Rect(
-                barrel.rect.x + barrel.solid_x_offset,
+                barrel.rect.x + barrel.solid_x_offset + BARREL_EDGE_LEFT,
                 barrel.rect.y  + barrel.solid_y_offset,
-                barrel.solid_w,
+                max(1, barrel.solid_w - BARREL_EDGE_LEFT - BARREL_EDGE_RIGHT),
                 barrel.rect.height - barrel.solid_y_offset)
-            if player_rect.colliderect(barrel_side_rect):
+            player_feet_y = self.y + PLAYER_HEIGHT
+            near_top = player_feet_y <= barrel.rect.top + barrel.solid_y_offset + barrel.rect.height // 2
+            if not near_top and player_rect.colliderect(barrel_side_rect):
                 overlap_left  = (player_rect.right -
                                  barrel_side_rect.left)
                 overlap_right = (barrel_side_rect.right -
@@ -378,6 +556,9 @@ class Player(PhysicsObject, pygame.sprite.Sprite):
         Same logic as barrel — land on top or push sideways.
         """
         player_rect = self.get_rect()
+        # Extend 2px below feet so standing-on-edge still detects overlap
+        feet_probe = pygame.Rect(player_rect.x, player_rect.y,
+                                  player_rect.width, player_rect.height + 2)
 
         # Top landing
         # Use solid bounds if available, fallback to inset
@@ -387,28 +568,32 @@ class Player(PhysicsObject, pygame.sprite.Sprite):
         sy_off = getattr(obstacle, 'solid_y_offset', 0)
 
         top_zone = pygame.Rect(
-            obstacle.rect.x + sx_off,
+            obstacle.rect.x + sx_off + BOX_EDGE_LEFT,
             obstacle.rect.y + sy_off,
-            sw,
+            max(1, sw - BOX_EDGE_LEFT - BOX_EDGE_RIGHT),
             6
         )
         prev_feet = self.y + PLAYER_HEIGHT - self.vel_y * 0.016
-        if (player_rect.colliderect(top_zone) and
+        if (feet_probe.colliderect(top_zone) and
                 prev_feet <= obstacle.rect.top + 8 and
                 self.vel_y >= 0):
-            self.y = obstacle.rect.top - PLAYER_HEIGHT
+            self.y = obstacle.rect.top - PLAYER_HEIGHT + getattr(obstacle, 'player_y_offset', 0)
             self.vel_y = 0
             self.on_ground = True
             self.update_rect()
             return
 
-        # Side push
+        # Side push — uses same edge offsets as top zone
+        # Skip side push if player is near/above box top
+        # (falling off edge — let gravity handle it)
         obs_side_rect = pygame.Rect(
-            obstacle.rect.x + sx_off,
+            obstacle.rect.x + sx_off + BOX_EDGE_LEFT,
             obstacle.rect.y + sy_off,
-            sw,
+            max(1, sw - BOX_EDGE_LEFT - BOX_EDGE_RIGHT),
             obstacle.rect.height - sy_off)
-        if player_rect.colliderect(obs_side_rect):
+        player_feet_y = self.y + PLAYER_HEIGHT
+        near_top = player_feet_y <= obstacle.rect.top + sy_off + obstacle.rect.height // 2
+        if not near_top and player_rect.colliderect(obs_side_rect):
             overlap_left  = (player_rect.right -
                              obs_side_rect.left)
             overlap_right = (obs_side_rect.right -

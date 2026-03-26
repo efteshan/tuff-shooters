@@ -6,13 +6,15 @@ from src.constants import (
     SCREEN_W, SCREEN_H, VIRTUAL_W, VIRTUAL_H, SKY_COLOR, GROUND_Y,
     CLIFF_DEATH_Y, CONTROLS, P1_COLOR, P2_COLOR, PLAYER_WIDTH, PLAYER_HEIGHT,
     load_or_placeholder, GIF_BLOOD_STRIP, GIF_BLOOD_FRAMES,
-    GIF_KO_STRIP, GIF_KO_FRAMES, IMG_MENU_BG, MAX_AMMO
+    GIF_KO_STRIP, GIF_KO_FRAMES, IMG_MENU_BG, MAX_AMMO,
+    KNOCKBACK_FORCE, BOX_X
 )
 from src.camera import Camera
 from src.player import Player
 from src.arena import Ground, create_arena
-from src.pickups import PickupSpawnManager
+from src.pickups import PickupSpawnManager, ShotgunPickup, BazookaPickup, preload_pickup_images
 from src.particles import ParticleSystem
+from src.bullet import ShotgunPellet, Rocket, Explosion
 from src.ui import HUD, KOScreen
 from src.menu import MainMenu, PauseMenu, GameOverMenu
 from src.animation import SkeletalBody
@@ -25,9 +27,11 @@ class Game:
     def __init__(self, screen):
         self.screen = screen
         self.state = "STATE_MENU"
+        self.hit_stop = 0.0  # added for screen freeze on big hits
         
         # Bug fix #2: K.O. triggered flag
         self.ko_triggered = False
+        self._death_delay_timer = 0.0
         
         # Initialize Audio Manager and load sounds
         self.audio_manager = AudioManager()
@@ -136,6 +140,8 @@ class Game:
             'health_pack': load_or_placeholder('assets/pickups/health_pack.png', (30, 30), (60, 200, 60)),
             'ammo_box': load_or_placeholder('assets/pickups/ammo_box.png', (30, 30), (200, 200, 60)),
         }
+        # Preload custom pickup images now (avoids lag on first spawn)
+        preload_pickup_images()
         
         # Menu background
         self.menu_bg = load_or_placeholder('assets/ui/menu_bg.png', (SCREEN_W, SCREEN_H), (40, 40, 60))
@@ -206,14 +212,55 @@ class Game:
                 self.hud.is_paused = False
             return
         
+        # Death delay — ragdoll plays while we wait before showing KO screen
+        if self.state == "STATE_DEATH_DELAY":
+            self._death_delay_timer -= dt
+            # Keep updating skeletal bodies (for ragdoll animation)
+            for player in [self.p1, self.p2]:
+                player.body.update(player.state, player.vel_x, player.on_ground, dt, player.vel_y)
+            # Keep updating particles
+            self.particles.update(dt)
+            
+            # Check if all ragdoll parts have fully faded or gone off-screen
+            all_vanished = True
+            for player in [self.p1, self.p2]:
+                for part in player.body.parts_physics:
+                    if not part.fully_faded:
+                        all_vanished = False
+                        break
+            
+            # Transition once timer elapsed AND all parts vanished (or max 4s safety)
+            if (self._death_delay_timer <= 0 and all_vanished) or self._death_delay_timer <= -2.5:
+                if self.p1_score >= 3 or self.p2_score >= 3:
+                    self.state = "STATE_GAME_OVER"
+                else:
+                    self.ko_screen.reset()
+                    self.state = "STATE_KO"
+                self.hud.is_paused = False
+            return
+        
         if self.state == "STATE_PAUSED" or self.state == "STATE_GAME_OVER":
             return
         
         # STATE_PLAYING
         self._update_playing(dt)
-    
+
+    def add_hit_stop(self, duration: float):
+        """Freeze game logic briefly for dramatic impact."""
+        self.hit_stop = max(self.hit_stop, duration)
+        
     def _update_playing(self, dt):
         """Update game logic during play state."""
+        # Hit stop freezes game logic for a moment to emphasize heavy impacts
+        if self.hit_stop > 0:
+            self.hit_stop -= dt
+            
+            # We still need to update the camera (screen shake should continue to decay)
+            p1_cx = self.p1.x + self.p1.width / 2
+            p2_cx = self.p2.x + self.p2.width / 2
+            self.camera.update(p1_cx, p2_cx, dt)
+            return
+
         keys = pygame.key.get_pressed()
         
         # Update players
@@ -229,17 +276,38 @@ class Game:
                 player.check_trampoline_collision(
                     self.trampoline_clouds)
                 player.check_pickups(self.health_group, self.ammo_group)
-                # Shotgun pickup check
+                # Weapon pickup check
                 if player.alive:
                     hits = pygame.sprite.spritecollide(
                         player, self.shotgun_group, False)
-                    for sg in hits:
-                        if not player.has_shotgun:
+                    for wp in hits:
+                        if isinstance(wp, ShotgunPickup) and not player.has_shotgun:
                             player.pickup_shotgun()
-                            sg.kill()
+                            wp.kill()
+                        elif isinstance(wp, BazookaPickup) and not player.has_bazooka:
+                            player.pickup_bazooka()
+                            wp.kill()
                 # Cliff death — player fell off edge of ground
                 if player.alive and player.rect.bottom >= CLIFF_DEATH_Y:
                     player.take_cliff_death()
+                
+                # Fall damage — only on landing on GROUND, not platforms
+                if player.alive:
+                    if player.on_ground and not player._was_on_ground:
+                        # Only apply if landing on actual ground level (not platforms/barrels/boxes)
+                        ground_level_y = GROUND_Y - player.height
+                        on_actual_ground = abs(player.y - ground_level_y) < 10
+                        fall_height = player.y - player._highest_y
+                        if on_actual_ground and fall_height > 200:
+                            t = min(1.0, (fall_height - 200) / 300)
+                            dmg = int(5 + t * 10)  # 5 to 15
+                            player.health = max(0, player.health - dmg)
+                            self.camera.add_shake(2, 0.15)
+                            if player.health <= 0:
+                                player.die(hit_dir=0)
+                                self._trigger_ko(player.player_id)
+                        player._highest_y = player.y
+                    player._was_on_ground = player.on_ground
         
         # Update knife combat
         if self.p1.alive:
@@ -266,7 +334,7 @@ class Game:
         
         # Update skeletal bodies
         for player in [self.p1, self.p2]:
-            player.body.update(player.state, player.vel_x, player.on_ground, dt)
+            player.body.update(player.state, player.vel_x, player.on_ground, dt, player.vel_y)
         
         # Update camera
         p1_cx = self.p1.x + self.p1.width / 2
@@ -275,50 +343,79 @@ class Game:
     
     def check_bullet_collisions(self):
         """Check bullet collisions with players and barrels."""
+        
+        # Process Explosions first for splash damage
         for bullet in list(self.bullet_group):
+            if isinstance(bullet, Explosion):
+                if not bullet.has_damaged:
+                    bullet.has_damaged = True
+                    for player in [self.p1, self.p2]:
+                        if not player.alive:
+                            continue
+                        
+                        dist = ((bullet.x - (player.x + player.width/2))**2 + 
+                                (bullet.y - (player.y + player.height/2))**2)**0.5
+                        
+                        if dist <= bullet.radius:
+                            kb_dir = 1 if player.x > bullet.x else -1
+                            # Less damage, but large knockback
+                            killed = player.take_damage(bullet.damage, player.rect.center, KNOCKBACK_FORCE * 1.5 * kb_dir)
+                            if killed:
+                                self._trigger_ko(player.player_id)
+                continue
+
+            # Check normal bullets/rockets
+            collided = False
+            
             # vs Barrels
             for barrel in self.barrels:
                 if bullet.rect.colliderect(barrel.rect):
-                    bullet.kill()
-                    self.audio_manager.play_sound("impact")
+                    collided = True
                     break
             
-            if not bullet.alive:
-                continue
-            
             # vs DestructibleBox
-            if not self.box.destroyed:
+            if not collided and not self.box.destroyed:
                 if bullet.rect.colliderect(self.box.rect):
-                    from src.bullet import ShotgunPellet
+                    collided = True
                     dmg = (bullet.get_effective_damage(bullet.x)
                            if isinstance(bullet, ShotgunPellet)
                            else bullet.damage)
                     result = self.box.take_damage(dmg)
-                    # Mark bullet dead BEFORE checking result
-                    # prevents multiple pellets hitting box same frame
-                    bullet.kill()
-                    bullet.alive = False
                     if result == 'destroyed':
+                        self.camera.add_shake(10.0, 0.3)
                         self._spawn_shotgun_from_box()
-                    break
             
-            if not bullet.alive:
-                continue
+            # vs Players
+            hit_player = None
+            if not collided:
+                for player in [self.p1, self.p2]:
+                    if player.player_id == bullet.owner_id:
+                        continue
+                    if not player.alive:
+                        continue
+                    if bullet.rect.colliderect(player.get_rect()):
+                        collided = True
+                        hit_player = player
+                        break
             
-            # vs Players (cannot hit own player)
-            for player in [self.p1, self.p2]:
-                if player.player_id == bullet.owner_id:
-                    continue
-                if not player.alive:
-                    continue
-                if bullet.rect.colliderect(player.get_rect()):
-                    killed = player.take_damage(bullet.damage, bullet.rect.center)
-                    self.particles.spawn_blood(bullet.rect.centerx, bullet.rect.centery)
+            if collided:
+                if isinstance(bullet, Rocket):
+                    # Spawn explosion
+                    exp = Explosion(bullet.rect.centerx, bullet.rect.centery, bullet.owner_id)
+                    self.bullet_group.add(exp)
+                    self.camera.add_shake(15.0, 0.4)
+                    self.audio_manager.play_sound("impact") # Add explosion sound later
+                else:
+                    if hit_player:
+                        kb_dir = 1 if bullet.vel_x > 0 else -1
+                        killed = hit_player.take_damage(bullet.damage, hit_player.rect.center, KNOCKBACK_FORCE * 0.3 * kb_dir)
+                        self.particles.spawn_blood(bullet.rect.centerx, bullet.rect.centery)
+                        if killed:
+                            self._trigger_ko(hit_player.player_id)
                     self.audio_manager.play_sound("impact")
-                    bullet.kill()
-                    if killed:
-                        self._trigger_ko(player.player_id)
-                    break
+                
+                bullet.kill()
+                bullet.alive = False
     
     def _trigger_ko(self, loser_id):
         """Trigger K.O. state. Bug fix #2: prevent double trigger."""
@@ -330,25 +427,24 @@ class Game:
             else:
                 self.p1_score += 1
 
-            if self.p1_score >= 3 or self.p2_score >= 3:
-                self.state = "STATE_GAME_OVER"
-                self.hud.is_paused = False
-            else:
-                self.ko_screen.reset()
-                self.state = "STATE_KO"
-                self.hud.is_paused = False
+            # Death delay — let ragdoll play for 1.5s before KO screen
+            self.state = "STATE_DEATH_DELAY"
+            self._death_delay_timer = 1.5
+            self.hud.is_paused = False
     
     def _spawn_shotgun_from_box(self):
-        """Drop a shotgun pickup at the box position."""
-        from src.pickups import ShotgunPickup
-        from src.constants import BOX_X, GROUND_Y
-        # Always clear any existing shotgun pickup before spawning new one
-        # Prevents stacking/invisible duplicate pickups on repeated box bursts
+        """Drop a shotgun or bazooka pickup at the box position."""
+        
         self.shotgun_group.empty()
-        sg = ShotgunPickup(BOX_X, GROUND_Y)
-        self.shotgun_group.add(sg)
-        print(f"[SHOTGUN] Spawned at ({BOX_X}, {GROUND_Y}) "
-              f"rect={sg.rect} lifetime={sg.lifetime}")
+        
+        if random.random() < 0.3: # 30% chance for bazooka
+            sg = BazookaPickup(BOX_X, GROUND_Y)
+            self.shotgun_group.add(sg)
+            print(f"[BAZOOKA] Spawned at ({BOX_X}, {GROUND_Y}) ")
+        else:
+            sg = ShotgunPickup(BOX_X, GROUND_Y)
+            self.shotgun_group.add(sg)
+            print(f"[SHOTGUN] Spawned at ({BOX_X}, {GROUND_Y}) ")
     
     def reset_game(self):
         """Full match reset."""
@@ -371,6 +467,13 @@ class Game:
         self.p1.knife_held_last = False
         self.p1.knife_hit_pending = False
         self.p1.on_ground = True
+        self.p1.dash_cooldown = 0.0
+        self.p1.is_dashing = False
+        self.p1.hit_stun_timer = 0.0
+        self.p1.has_shotgun = False
+        self.p1.has_bazooka = False
+        self.p1._highest_y = self.p1.y
+        self.p1._was_on_ground = True
         self.p1.update_rect()
         
         # Reset Player 2
@@ -389,6 +492,13 @@ class Game:
         self.p2.knife_held_last = False
         self.p2.knife_hit_pending = False
         self.p2.on_ground = True
+        self.p2.dash_cooldown = 0.0
+        self.p2.is_dashing = False
+        self.p2.hit_stun_timer = 0.0
+        self.p2.has_shotgun = False
+        self.p2.has_bazooka = False
+        self.p2._highest_y = self.p2.y
+        self.p2._was_on_ground = True
         self.p2.update_rect()
         
         # Clear all active projectiles and pickups

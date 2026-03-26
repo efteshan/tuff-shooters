@@ -3,12 +3,20 @@
 import pygame
 import math
 import random
-from src.constants import GRAVITY, MAX_FALL_SPEED, GROUND_Y, VIRTUAL_W
+from src.constants import (
+    GRAVITY, MAX_FALL_SPEED, GROUND_Y, VIRTUAL_W,
+    JUMP_LAUNCH_VEL, JUMP_RISE_VEL, JUMP_FALL_VEL,
+    JUMP_LEG_LAUNCH, JUMP_LEG_RISE, JUMP_LEG_APEX, JUMP_LEG_FALL, JUMP_LEG_LAND,
+    JUMP_ARM_LAUNCH, JUMP_ARM_RISE, JUMP_ARM_APEX, JUMP_ARM_FALL, JUMP_ARM_LAND,
+    JUMP_TORSO_LAUNCH, JUMP_TORSO_FALL, JUMP_TORSO_LAND,
+    JUMP_HEAD_LAUNCH, JUMP_HEAD_FALL,
+    JUMP_LERP_LEGS, JUMP_LERP_TORSO, JUMP_LERP_ARMS, JUMP_LERP_HEAD,
+    JUMP_LAND_DURATION,
+)
 
 
-def create_head():
-    """Smooth 3D head with rich detail — rendered at 3x."""
-    S = 3
+def _draw_head_base(S):
+    """Draw the head base (everything except eyes) at scale S."""
     big = pygame.Surface((22*S, 24*S), pygame.SRCALPHA)
 
     skin = (210, 170, 115)
@@ -25,12 +33,12 @@ def create_head():
     pygame.draw.ellipse(big, (235, 200, 145), (6*S, 4*S, 10*S, 6*S))    # forehead glow
     pygame.draw.ellipse(big, (225, 190, 135), (5*S, 8*S, 12*S, 5*S))    # mid-face glow
     pygame.draw.ellipse(big, (175, 135,  85), (7*S, 19*S, 8*S, 4*S))    # chin shadow
-    # Jaw highlight — soft glow under cheekbone
+    # Jaw highlight
     pygame.draw.ellipse(big, (220, 182, 125), (4*S, 16*S, 6*S, 4*S))
-    # Left temple gradient — 2 strips for smoother falloff
+    # Left temple gradient
     pygame.draw.line(big, (245, 215, 160), (2*S, 9*S), (2*S, 18*S), 3)
     pygame.draw.line(big, (230, 195, 140), (3*S, 8*S), (3*S, 19*S), 2)
-    # Right temple shadow — 2 strips
+    # Right temple shadow
     pygame.draw.line(big, (160, 115,  65), (19*S, 9*S), (19*S, 18*S), 3)
     pygame.draw.line(big, (180, 135,  80), (18*S, 8*S), (18*S, 19*S), 2)
 
@@ -40,7 +48,7 @@ def create_head():
     pygame.draw.ellipse(big, (225, 185, 130), (12*S, 7*S, 7*S, 7*S))
     pygame.draw.ellipse(big, (195, 150,  95), (12*S, 14*S, 7*S, 6*S))
 
-    # Ear suggestion — small bumps on sides
+    # Ear suggestion
     pygame.draw.ellipse(big, (200, 160, 105), (0, 10*S, 3*S, 5*S))
     pygame.draw.ellipse(big, (185, 142,  90), (0, 11*S, 2*S, 3*S))
     pygame.draw.ellipse(big, (200, 160, 105), (20*S, 10*S, 3*S, 5*S))
@@ -56,27 +64,71 @@ def create_head():
     pygame.draw.polygon(big, hair, hair_pts)
     for pts in [[(7,2),(9,-3),(11,2)], [(10,1),(12,-4),(14,1)], [(13,2),(15,-2),(17,3)]]:
         pygame.draw.polygon(big, hair, [(p[0]*S, p[1]*S) for p in pts])
-    # Hair volume highlights
     pygame.draw.line(big, highlight, (8*S, 1*S), (14*S, 1*S), 3)
     pygame.draw.line(big, highlight, (9*S, 0), (13*S, 0), 2)
     pygame.draw.line(big, (95, 70, 35), (4*S, 4*S), (3*S, 7*S), 2)
-    pygame.draw.ellipse(big, (55, 38, 20), (9*S, 0, 5*S, 3*S))  # hair crown glow
+    pygame.draw.ellipse(big, (55, 38, 20), (9*S, 0, 5*S, 3*S))
     # Sideburns
     pygame.draw.rect(big, hair, (2*S, 7*S, 2*S, 5*S))
     pygame.draw.rect(big, hair, (18*S, 7*S, 2*S, 5*S))
-    # Secondary strands
     pygame.draw.line(big, (65, 45, 22), (6*S, 3*S), (10*S, 1*S), 1)
     pygame.draw.line(big, (65, 45, 22), (12*S, 1*S), (16*S, 3*S), 1)
 
-    # Face details
-    pygame.draw.line(big, (190, 150, 100), (11*S, 10*S), (11*S, 16*S), 1)  # nose bridge
-    pygame.draw.line(big, (185, 145, 95), (5*S, 8*S), (17*S, 8*S), 2)      # brow ridge
+    # Nose bridge + nose tip
+    pygame.draw.line(big, (190, 150, 100), (11*S, 10*S), (11*S, 16*S), 1)
+    pygame.draw.ellipse(big, (200, 160, 108), (9*S, 15*S, 4*S, 3*S))  # nose tip
+    # Brow ridge
+    pygame.draw.line(big, (185, 145, 95), (5*S, 8*S), (17*S, 8*S), 2)
+
+    # Stubble suggestion (subtle dots under nose/on chin)
+    for sx, sy in [(9,18),(11,18),(13,18),(8,20),(10,20),(12,20),(14,20),(10,22),(12,22)]:
+        pygame.draw.circle(big, (180, 140, 95), (sx*S, sy*S), max(1, S//3))
+
+    return big
+
+
+def create_head():
+    """Head with eyes OPEN — rendered at 4x."""
+    S = 4
+    big = _draw_head_base(S)
+
+    # ── EYES ────────────────────────────────────
+    # Left eye
+    pygame.draw.ellipse(big, (240, 240, 235), (6*S, 10*S, 4*S, 3*S))   # sclera
+    pygame.draw.ellipse(big, (55, 35, 20),    (7*S, 10*S, 3*S, 3*S))   # iris
+    pygame.draw.circle(big,  (15, 8, 5),      (8*S + S, 11*S + S), S)  # pupil
+    pygame.draw.circle(big,  (255,255,255),    (8*S, 10*S + S), max(1, S//2))  # specular
+    # Left eyebrow
+    pygame.draw.line(big, (65, 42, 18), (5*S, 9*S), (10*S, 8*S), max(2, S))
+
+    # Right eye
+    pygame.draw.ellipse(big, (240, 240, 235), (12*S, 10*S, 4*S, 3*S))  # sclera
+    pygame.draw.ellipse(big, (55, 35, 20),    (12*S, 10*S, 3*S, 3*S))  # iris
+    pygame.draw.circle(big,  (15, 8, 5),      (13*S + S, 11*S + S), S) # pupil
+    pygame.draw.circle(big,  (255,255,255),    (13*S, 10*S + S), max(1, S//2))  # specular
+    # Right eyebrow
+    pygame.draw.line(big, (65, 42, 18), (12*S, 8*S), (17*S, 9*S), max(2, S))
+
+    return pygame.transform.smoothscale(big, (22, 24))
+
+
+def create_head_closed():
+    """Head with eyes CLOSED (for blinking) — rendered at 4x."""
+    S = 4
+    big = _draw_head_base(S)
+
+    # Closed eyes — skin-colored line where eyes would be
+    pygame.draw.line(big, (185, 145, 95), (6*S, 11*S), (10*S, 11*S), max(2, S))
+    pygame.draw.line(big, (185, 145, 95), (12*S, 11*S), (16*S, 11*S), max(2, S))
+    # Eyebrows (same as open)
+    pygame.draw.line(big, (65, 42, 18), (5*S, 9*S), (10*S, 8*S), max(2, S))
+    pygame.draw.line(big, (65, 42, 18), (12*S, 8*S), (17*S, 9*S), max(2, S))
 
     return pygame.transform.smoothscale(big, (22, 24))
 
 def create_torso():
-    """Smooth 3D torso with rich gradient shading — rendered at 3x."""
-    S = 3
+    """Smooth 3D torso with rich gradient shading — rendered at 4x."""
+    S = 4
     big = pygame.Surface((16*S, 22*S), pygame.SRCALPHA)
     # Main body
     pygame.draw.rect(big, (215, 105, 30), (0, 0, 16*S, 22*S), border_radius=3*S)
@@ -106,8 +158,8 @@ def create_torso():
     return pygame.transform.smoothscale(big, (16, 22))
 
 def create_arm(color, w=8, h=22):
-    """Smooth 3D arm with hand shape — rendered at 3x."""
-    S = 3
+    """Smooth 3D arm with hand shape — rendered at 4x."""
+    S = 4
     big = pygame.Surface((w*S, h*S), pygame.SRCALPHA)
     skin       = (210, 170, 115)
     skin_dk    = (185, 145,  95)
@@ -165,8 +217,8 @@ def create_arm(color, w=8, h=22):
     return pygame.transform.smoothscale(big, (w, h))
 
 def create_leg(color, w=11, h=26):
-    """Smooth 3D leg with multi-gradient shading — rendered at 3x."""
-    S = 3
+    """Smooth 3D leg with multi-gradient shading — rendered at 4x."""
+    S = 4
     big = pygame.Surface((w*S, h*S), pygame.SRCALPHA)
     thigh_color = color
     shin_color  = tuple(max(0, c - 25) for c in color)
@@ -216,8 +268,8 @@ def create_leg(color, w=11, h=26):
     return pygame.transform.smoothscale(big, (w, h))
 
 def create_gun():
-    """Smooth 3D gun — rendered at 3x then downsampled."""
-    S = 3
+    """Smooth 3D gun — rendered at 4x then downsampled."""
+    S = 4
     big = pygame.Surface((22*S, 10*S), pygame.SRCALPHA)
     # Body
     pygame.draw.rect(big, (50, 50, 50), (0, 2*S, 16*S, 6*S), border_radius=S)
@@ -242,8 +294,8 @@ def create_gun():
     return pygame.transform.smoothscale(big, (22, 10))
 
 def create_knife():
-    """Smooth 3D knife — rendered at 3x then downsampled."""
-    S = 3
+    """Smooth 3D knife — rendered at 4x then downsampled."""
+    S = 4
     big = pygame.Surface((26*S, 10*S), pygame.SRCALPHA)
     # Blade
     blade_pts = [(6*S, 4*S), (24*S, 2*S), (24*S, 6*S), (6*S, 6*S)]
@@ -260,9 +312,27 @@ def create_knife():
     pygame.draw.line(big, (95, 95, 95), (6*S, 2*S), (6*S, 7*S), 2)
     return pygame.transform.smoothscale(big, (26, 10))
 
+def create_bazooka():
+    """Side-view bazooka for drawing in hand."""
+    S = 2
+    big = pygame.Surface((30*S, 12*S), pygame.SRCALPHA)
+    body = (60, 80, 60)
+    metal = (50, 50, 50)
+    dark = (30, 40, 30)
+    
+    # Main tube
+    pygame.draw.rect(big, body, (2*S, 3*S, 26*S, 6*S), border_radius=S)
+    pygame.draw.rect(big, dark, (2*S, 3*S, 26*S, 6*S), 1, border_radius=S)
+    
+    # Bells
+    pygame.draw.rect(big, metal, (0, 2*S, 4*S, 8*S))
+    pygame.draw.rect(big, metal, (26*S, 2*S, 4*S, 8*S))
+    
+    return pygame.transform.smoothscale(big, (30, 12))
+
 def create_cowboy_hat():
-    """Smooth 3D cowboy hat — rendered at 3x then downsampled."""
-    S = 3
+    """Smooth 3D cowboy hat — rendered at 4x then downsampled."""
+    S = 4
     big = pygame.Surface((40*S, 22*S), pygame.SRCALPHA)
 
     hat_crown = (95,  65, 25)
@@ -361,6 +431,7 @@ class SkeletalBody:
             leg_l_color  = (215, 195,  25)
 
         self.head      = create_head()
+        self.head_closed = create_head_closed()  # blink variant
         if player_id == 1:
             self.torso = self._make_cowboy_torso()
         else:
@@ -370,13 +441,32 @@ class SkeletalBody:
         self.leg_r     = create_leg(leg_r_color)
         self.leg_l     = create_leg(leg_l_color)
         self.gun_surf  = create_gun()
+        self.bazooka_surf = create_bazooka()
+        self.bazooka_surf_f = pygame.transform.flip(self.bazooka_surf, True, False)
         self.knife_surf = create_knife()
+        
+        self.current_weapon = "pistol"
 
         # Cowboy hat for P1 only
         if player_id == 1:
             self.cowboy_hat = create_cowboy_hat()
         else:
             self.cowboy_hat = None
+
+        # ── Pre-cache flipped sprites for performance ──
+        self.head_f        = pygame.transform.flip(self.head, True, False)
+        self.head_closed_f = pygame.transform.flip(self.head_closed, True, False)
+        self.torso_f     = pygame.transform.flip(self.torso, True, False)
+        self.arm_r_f     = pygame.transform.flip(self.arm_r, True, False)
+        self.arm_l_f     = pygame.transform.flip(self.arm_l, True, False)
+        self.leg_r_f     = pygame.transform.flip(self.leg_r, True, False)
+        self.leg_l_f     = pygame.transform.flip(self.leg_l, True, False)
+        self.gun_surf_f  = pygame.transform.flip(self.gun_surf, True, False)
+        self.knife_surf_f = pygame.transform.flip(self.knife_surf, True, False)
+        if self.cowboy_hat is not None:
+            self.cowboy_hat_f = pygame.transform.flip(self.cowboy_hat, True, False)
+        else:
+            self.cowboy_hat_f = None
 
         # Animation state
         self.walk_cycle   = 0.0
@@ -386,10 +476,59 @@ class SkeletalBody:
         self.gun_recoil   = 0.0
         self.is_ragdoll   = False
         self.parts_physics = []
-    
+
+        # Jump animation state — separate front/back for proper body shape
+        self.jump_leg_f  = 0.0   # front leg angle
+        self.jump_leg_b  = 0.0   # back leg angle
+        self.jump_arm_f  = 0.0   # front arm angle
+        self.jump_arm_b  = 0.0   # back arm angle
+        self.jump_torso_lean = 0.0
+        self.jump_head_tilt  = 0.0
+        self.was_airborne    = False
+        self.land_timer      = 0.0
+
+        # Idle breathing
+        self.breathe_cycle = 0.0
+
+        # Eye blink
+        self.blink_timer    = random.uniform(2.5, 5.0)
+        self.is_blinking    = False
+        self.blink_duration = 0.0
+
+        # Hat bounce (spring physics)
+        self.hat_offset_y = 0.0
+        self.hat_vel_y    = 0.0
+
+        # Turn lean
+        self.prev_facing  = 1
+        self.turn_lean    = 0.0
+
+        # Squash/stretch
+        self.squash_x = 1.0
+        self.squash_y = 1.0
+
+        # Hit flash
+        self.hit_flash = 0.0
+
+        # Death freeze (Tier 3: anticipation pause before ragdoll)
+        self._death_pending = False
+        self._death_freeze = 0.0
+        self._death_x = 0
+        self._death_y = 0
+        self._death_facing = 1
+        self._death_hit_dir = 0
+        self._death_is_cliff = False
+
+        # Pre-cached shadow ellipses (avoid per-frame Surface allocation)
+        self._shadow_layers = []
+        for sw, sh, sa in [(28, 5, 45), (22, 4, 35), (14, 3, 50)]:
+            ss = pygame.Surface((sw, sh), pygame.SRCALPHA)
+            pygame.draw.ellipse(ss, (0, 0, 0, sa), (0, 0, sw, sh))
+            self._shadow_layers.append((ss, sw, sh))
+
     def _make_cowboy_torso(self):
-        """Smooth 3D cowboy jacket — rendered at 3x then downsampled."""
-        S = 3
+        """Smooth 3D cowboy jacket — rendered at 4x then downsampled."""
+        S = 4
         big     = pygame.Surface((16*S, 22*S), pygame.SRCALPHA)
         jacket  = (148, 108,  42)
         jkt_dk  = ( 95,  68,  18)
@@ -434,20 +573,27 @@ class SkeletalBody:
 
         return pygame.transform.smoothscale(big, (16, 22))
 
-    def update(self, player_state, vel_x, on_ground, dt):
+    def update(self, player_state, vel_x, on_ground, dt, vel_y=0):
         """Update skeletal animation based on player state."""
         if self.is_ragdoll:
             self._update_ragdoll(dt)
+            return
+        
+        # Tier 3: Death freeze countdown
+        if self._death_pending:
+            self._death_freeze -= dt
+            if self._death_freeze <= 0:
+                self._death_pending = False
+                self._execute_ragdoll()
             return
         
         # Walking leg animation using sine wave
         if player_state == "WALKING" and on_ground:
             self.walk_cycle += 15.0 * dt
         else:
-            # Hard snap to zero when not walking
-            # This stops any residual leg movement completely
-            self.walk_cycle = self.walk_cycle * 0.4
-            if abs(self.walk_cycle) < 0.05:
+            # Snap to zero faster when not walking
+            self.walk_cycle *= 0.3
+            if abs(self.walk_cycle) < 0.1:
                 self.walk_cycle = 0.0
         
         # Knife animation phases
@@ -470,17 +616,175 @@ class SkeletalBody:
         # Gun recoil decay
         if self.gun_recoil > 0:
             self.gun_recoil = max(0, self.gun_recoil - 60 * dt)
+        
+        # ── JUMP ANIMATION ────────────────────────────
+        # Each phase sets SEPARATE front/back targets for the
+        # correct body silhouette matching the jump arc:
+        #   LAUNCH  → compressed (both tucked)   ╷
+        #   RISE    → extending                  ╱
+        #   APEX    → spread wide (opposite)     ◠
+        #   FALL    → bracing (both forward)      ╲
+        #   LAND    → compressed (absorb squat)   ╵
+        if not on_ground:
+            if vel_y < JUMP_LAUNCH_VEL:          # LAUNCH — crouch burst
+                tgt_lf = JUMP_LEG_LAUNCH          # both legs tuck up
+                tgt_lb = JUMP_LEG_LAUNCH
+                tgt_af = JUMP_ARM_LAUNCH          # both arms sweep back
+                tgt_ab = JUMP_ARM_LAUNCH
+                tgt_torso = JUMP_TORSO_LAUNCH
+                tgt_head = JUMP_HEAD_LAUNCH
+            elif vel_y < JUMP_RISE_VEL:          # RISE — extending
+                tgt_lf = JUMP_LEG_RISE            # front leg forward
+                tgt_lb = -JUMP_LEG_RISE * 0.5     # back leg trailing
+                tgt_af = JUMP_ARM_RISE            # arms reaching up
+                tgt_ab = JUMP_ARM_RISE * 0.5
+                tgt_torso = 0
+                tgt_head = -3
+            elif vel_y <= JUMP_FALL_VEL:          # APEX — wide spread
+                tgt_lf = JUMP_LEG_APEX            # front leg forward
+                tgt_lb = -JUMP_LEG_APEX           # back leg backward
+                tgt_af = JUMP_ARM_APEX            # front arm up
+                tgt_ab = -JUMP_ARM_APEX           # back arm down
+                tgt_torso = 0
+                tgt_head = 0
+            else:                                 # FALL — brace
+                tgt_lf = JUMP_LEG_FALL            # both legs forward
+                tgt_lb = JUMP_LEG_FALL * 0.6
+                tgt_af = JUMP_ARM_FALL            # both arms trail up
+                tgt_ab = JUMP_ARM_FALL * 0.7
+                tgt_torso = JUMP_TORSO_FALL
+                tgt_head = JUMP_HEAD_FALL
+            # Auto-trigger stretch on first airborne frame
+            if not self.was_airborne:
+                self.trigger_launch()
+            self.was_airborne = True
+        elif self.was_airborne:
+            # Just landed — absorb squat + auto-trigger squash
+            self.trigger_land()
+            tgt_lf = JUMP_LEG_LAND
+            tgt_lb = JUMP_LEG_LAND
+            tgt_af = JUMP_ARM_LAND
+            tgt_ab = JUMP_ARM_LAND
+            tgt_torso = JUMP_TORSO_LAND
+            tgt_head = 4
+            self.land_timer = JUMP_LAND_DURATION
+            self.was_airborne = False
+        elif self.land_timer > 0:
+            # Landing recovery — ease back to neutral
+            self.land_timer -= dt
+            frac = max(0.0, self.land_timer / JUMP_LAND_DURATION)
+            tgt_lf = JUMP_LEG_LAND * frac
+            tgt_lb = JUMP_LEG_LAND * frac
+            tgt_af = JUMP_ARM_LAND * frac
+            tgt_ab = JUMP_ARM_LAND * frac
+            tgt_torso = JUMP_TORSO_LAND * frac
+            tgt_head = 4 * frac
+        else:
+            # Grounded — no jump influence
+            tgt_lf = tgt_lb = tgt_af = tgt_ab = tgt_torso = tgt_head = 0
+        # Smooth lerp — clamp factor to [0,1] to prevent overshoot
+        lf = min(1.0, JUMP_LERP_LEGS  * dt)
+        af = min(1.0, JUMP_LERP_ARMS  * dt)
+        tf = min(1.0, JUMP_LERP_TORSO * dt)
+        hf = min(1.0, JUMP_LERP_HEAD  * dt)
+        self.jump_leg_f      += (tgt_lf    - self.jump_leg_f)      * lf
+        self.jump_leg_b      += (tgt_lb    - self.jump_leg_b)      * lf
+        self.jump_arm_f      += (tgt_af    - self.jump_arm_f)      * af
+        self.jump_arm_b      += (tgt_ab    - self.jump_arm_b)      * af
+        self.jump_torso_lean += (tgt_torso - self.jump_torso_lean) * tf
+        self.jump_head_tilt  += (tgt_head  - self.jump_head_tilt)  * hf
+        
+        # Snap to zero when very close (prevent micro-jitter)
+        if abs(self.jump_leg_f)      < 0.3: self.jump_leg_f      = 0.0
+        if abs(self.jump_leg_b)      < 0.3: self.jump_leg_b      = 0.0
+        if abs(self.jump_arm_f)      < 0.3: self.jump_arm_f      = 0.0
+        if abs(self.jump_arm_b)      < 0.3: self.jump_arm_b      = 0.0
+        if abs(self.jump_torso_lean) < 0.2: self.jump_torso_lean = 0.0
+        if abs(self.jump_head_tilt)  < 0.2: self.jump_head_tilt  = 0.0
+
+        # ── IDLE BREATHING ────────────────────────────
+        if on_ground and player_state != "WALKING":
+            self.breathe_cycle += 2.0 * dt
+        else:
+            self.breathe_cycle *= 0.85  # fade out quickly
+
+        # ── EYE BLINK ────────────────────────────────
+        if self.is_blinking:
+            self.blink_duration -= dt
+            if self.blink_duration <= 0:
+                self.is_blinking = False
+                self.blink_timer = random.uniform(2.5, 5.0)
+        else:
+            self.blink_timer -= dt
+            if self.blink_timer <= 0:
+                self.is_blinking = True
+                self.blink_duration = 0.12
+
+        # ── HAT BOUNCE (spring physics) ─────────────
+        # Spring force pulling hat back to 0
+        spring_k = 120.0
+        damping  = 8.0
+        self.hat_vel_y += (-self.hat_offset_y * spring_k - self.hat_vel_y * damping) * dt
+        self.hat_offset_y += self.hat_vel_y * dt
+        # Clamp to prevent wild oscillation
+        self.hat_offset_y = max(-4.0, min(4.0, self.hat_offset_y))
+        # Walk bob feeds into hat
+        if player_state == "WALKING" and on_ground:
+            self.hat_vel_y += math.sin(self.walk_cycle * 2) * 15.0 * dt
+        # Landing kick
+        if self.was_airborne and on_ground:
+            self.hat_vel_y = -4.0
+
+        # ── TURN LEAN ────────────────────────────────
+        facing = 1 if vel_x >= 0 else -1
+        if vel_x == 0:
+            facing = self.prev_facing
+        if facing != self.prev_facing:
+            self.turn_lean = -6.0 * facing
+            self.prev_facing = facing
+        # Lerp back to 0
+        self.turn_lean += (0 - self.turn_lean) * min(1.0, 8.0 * dt)
+        if abs(self.turn_lean) < 0.2:
+            self.turn_lean = 0.0
+
+        # ── SQUASH/STRETCH ────────────────────────────
+        # Lerp back to 1.0
+        self.squash_x += (1.0 - self.squash_x) * min(1.0, 10.0 * dt)
+        self.squash_y += (1.0 - self.squash_y) * min(1.0, 10.0 * dt)
+        if abs(self.squash_x - 1.0) < 0.01:
+            self.squash_x = 1.0
+        if abs(self.squash_y - 1.0) < 0.01:
+            self.squash_y = 1.0
+
+        # ── HIT FLASH ────────────────────────────────
+        if self.hit_flash > 0:
+            self.hit_flash = max(0.0, self.hit_flash - dt)
     
     def trigger_knife(self):
         """Called when knife key is pressed."""
         if self.knife_phase == 0:
             self.knife_phase = 1
     
-    def trigger_gun_recoil(self):
+    def trigger_gun_recoil(self, weapon_type="pistol"):
         """Called when a bullet is fired."""
         self.gun_recoil = 8.0
+        self.current_weapon = weapon_type
         self.arm_r_angle = 25.0 if self.knife_phase == 0 else self.arm_r_angle
     
+    def trigger_hit(self):
+        """Called when the player takes damage."""
+        self.hit_flash = 0.15
+
+    def trigger_land(self):
+        """Called when the player lands — squash + hat kick."""
+        self.squash_x = 1.12
+        self.squash_y = 0.88
+        self.hat_vel_y = -5.0
+
+    def trigger_launch(self):
+        """Called when the player jumps — stretch."""
+        self.squash_x = 0.92
+        self.squash_y = 1.10
     def draw(self, surface, x, y, facing, camera=None):
         if self.is_ragdoll:
             for part in self.parts_physics:
@@ -490,15 +794,31 @@ class SkeletalBody:
         flip = (facing == -1)
         t    = self.walk_cycle
 
-        # Anchor points — unchanged from original
+        # Breathing offset (subtle torso rise/fall when idle)
+        breathe_off = math.sin(self.breathe_cycle) * 1.5 if self.breathe_cycle > 0.1 else 0
+
+        # Turn lean horizontal offset
+        lean_off = int(self.turn_lean)
+
+        # Anchor points
         feet_y    = int(y) + 72
-        torso_cx  = int(x) + 24
+        torso_cx  = int(x) + 24 + lean_off
         leg_top_y = feet_y - 26
-        torso_y   = leg_top_y - 22
+        torso_y   = leg_top_y - 22 - int(breathe_off)
         torso_x   = torso_cx - 8
         arm_y     = torso_y + 2
         head_y    = torso_y - 23
         head_x    = torso_cx - 11
+
+        # ── GROUND SHADOW (only when on/near ground) ──────
+        # feet_y is the bottom of the character; when on ground it equals GROUND_Y+2
+        # Only draw shadow when feet are near the ground surface
+        dist_from_ground = abs(feet_y - (GROUND_Y + 2))
+        if dist_from_ground < 8:
+            shadow_cx = torso_cx
+            shadow_y  = GROUND_Y + 2
+            for ss, sw, sh in self._shadow_layers:
+                surface.blit(ss, (shadow_cx - sw // 2, shadow_y - sh // 2))
 
         if not flip:
             leg_f_x = torso_cx + 2
@@ -517,10 +837,25 @@ class SkeletalBody:
         arm_f_angle = math.sin(t + math.pi) * 24
         arm_b_angle = math.sin(t) * 24
 
+        # Jump pose — add per-limb jump angles
+        leg_f_angle += self.jump_leg_f
+        leg_b_angle += self.jump_leg_b
+        arm_f_angle += self.jump_arm_f
+        arm_b_angle += self.jump_arm_b
+
         # Weapon arm override
         weapon_angle = arm_f_angle
+        arm_f_draw_x = arm_f_x
+        
         if self.gun_recoil > 0 and self.knife_phase == 0:
-            weapon_angle = -30 if not flip else 30
+            if not flip:
+                weapon_angle = -85
+            else:
+                # Rotate CW (85) so flipped arm points perfectly OUTWARD to the left (thumb on top).
+                weapon_angle = 85
+                # Pygame rotation expands bounding box; shift left by 14px to flawlessly anchor the shoulder.
+                arm_f_draw_x -= 14
+                
         if self.knife_phase > 0:
             weapon_angle = self.arm_r_angle
 
@@ -531,78 +866,128 @@ class SkeletalBody:
         # ±5 degrees, synced with walk cycle
         head_tilt = math.sin(t) * 5
         head_tilt = head_tilt if not flip else -head_tilt
+        # Add jump head tilt
+        head_tilt += self.jump_head_tilt
 
         # Walk depth — back limbs fade during stride peak
         walk_s = abs(math.sin(t))
 
         # Draw order — back to front
-        # 1. Back leg — fades at stride peak
-        bl = self._draw_part_img(self.leg_l,
-            leg_b_angle if not flip else -leg_b_angle, flip)
-        bl = bl.copy()
-        bl.set_alpha(int(255 - walk_s * 100))
-        surface.blit(bl, (leg_b_x, leg_top_y))
+        # 1. Back leg
+        bl_img = self.leg_l_f if flip else self.leg_l
+        bl_angle = leg_b_angle if not flip else -leg_b_angle
+        if abs(bl_angle) > 2.0:
+            bl_img = pygame.transform.rotate(bl_img, -bl_angle)
+        surface.blit(bl_img, (leg_b_x, leg_top_y))
 
-        # 2. Back arm — fades at stride peak
-        ba = self._draw_part_img(self.arm_l,
-            arm_b_angle if not flip else -arm_b_angle, flip)
-        ba = ba.copy()
-        ba.set_alpha(int(255 - walk_s * 130))
-        surface.blit(ba, (arm_b_x, arm_y))
+        # 2. Back arm
+        ba_img = self.arm_l_f if flip else self.arm_l
+        ba_angle = arm_b_angle if not flip else -arm_b_angle
+        if abs(ba_angle) > 2.0:
+            ba_img = pygame.transform.rotate(ba_img, -ba_angle)
+        surface.blit(ba_img, (arm_b_x, arm_y))
 
-        # 3. Torso — slight lean forward during walk
-        torso_lean = math.sin(t) * 1.5
+        # 3. Torso — slight lean forward during walk + jump lean
+        torso_lean = math.sin(t) * 1.5 + self.jump_torso_lean
         torso_lean = torso_lean if not flip else -torso_lean
-        self._draw_part(surface, self.torso,
-            torso_x + int(torso_lean), torso_y, 0, flip)
+        t_img = self.torso_f if flip else self.torso
+        surface.blit(t_img, (torso_x + int(torso_lean), torso_y))
 
         # 4. Front leg
-        self._draw_part(surface, self.leg_r,
-            leg_f_x, leg_top_y,
-            leg_f_angle if not flip else -leg_f_angle, flip)
+        fl_img = self.leg_r_f if flip else self.leg_r
+        fl_angle = leg_f_angle if not flip else -leg_f_angle
+        if abs(fl_angle) > 2.0:
+            fl_img = pygame.transform.rotate(fl_img, -fl_angle)
+        surface.blit(fl_img, (leg_f_x, leg_top_y))
 
         # 5. Front arm
-        self._draw_part(surface, self.arm_r,
-            arm_f_x, arm_y,
-            weapon_angle, flip)
+        fa_img = self.arm_r_f if flip else self.arm_r
+        if abs(weapon_angle) > 2.0:
+            fa_img = pygame.transform.rotate(fa_img, -weapon_angle)
+        surface.blit(fa_img, (arm_f_draw_x, arm_y))
+
+        # Calculate base muzzle position (defaults to hand)
+        self.muzzle_x = arm_f_draw_x
+        self.muzzle_y = arm_y
+
+        # Calculate where the muzzle will be when firing, using the exact recoil pose coordinates predictably:
+        if not flip:
+            recoil_arm_x = arm_f_x
+        else:
+            recoil_arm_x = arm_f_x - 14
+
+        if getattr(self, 'current_weapon', 'pistol') == 'bazooka':
+            gx = recoil_arm_x - 4
+            gy = head_y + 6
+            if not flip:
+                self.muzzle_x = gx + 30
+                self.muzzle_y = gy + 4
+            else:
+                self.muzzle_x = gx + 1  # Anchored exactly at the tip pixel
+                self.muzzle_y = gy + 4
+        else:
+            gy = head_y + 10
+            if not flip:
+                gx = recoil_arm_x + 16
+                self.muzzle_x = gx + 22
+                self.muzzle_y = gy + 3
+            else:
+                gx = recoil_arm_x - 16
+                self.muzzle_x = gx + 1  # Perfect 1-pixel overlap to touch the barrel peak without covering the center
+                self.muzzle_y = gy + 3
 
         # 6. Gun
         if self.gun_recoil > 0 and self.knife_phase == 0:
-            gx = arm_f_x + 8 if not flip else arm_f_x - 22
-            surface.blit(
-                self.gun_surf if not flip
-                else pygame.transform.flip(self.gun_surf, True, False),
-                (gx, arm_y + 14))
+            if getattr(self, 'current_weapon', 'pistol') == 'bazooka':
+                # Bazooka held on shoulder/head
+                gx = arm_f_draw_x - 4
+                gy = head_y + 6
+                if not flip:
+                    surface.blit(self.bazooka_surf, (gx, gy))
+                else:
+                    surface.blit(self.bazooka_surf_f, (gx, gy))
+            else:
+                # Pistol
+                gy = head_y + 10
+                if not flip:
+                    gx = arm_f_draw_x + 16
+                    surface.blit(self.gun_surf, (gx, gy))
+                else:
+                    gx = arm_f_draw_x - 16
+                    surface.blit(self.gun_surf_f, (gx, gy))
 
         # 7. Knife
         if self.knife_phase > 0:
             kx = arm_f_x + 8 if not flip else arm_f_x - 26
-            surface.blit(
-                self.knife_surf if not flip
-                else pygame.transform.flip(self.knife_surf, True, False),
-                (kx, arm_y + 13))
+            k_img = self.knife_surf_f if flip else self.knife_surf
+            surface.blit(k_img, (kx, arm_y + 13))
 
-        # 8. Head — bob + tilt + lean
+        # 8. Head — bob + tilt + lean + blink
         head_lean_x = int(torso_lean)
-        self._draw_part(surface, self.head,
-            head_x + head_lean_x, head_y - bob, head_tilt, flip)
+        if self.is_blinking:
+            h_img = self.head_closed_f if flip else self.head_closed
+        else:
+            h_img = self.head_f if flip else self.head
+        if abs(head_tilt) > 2.0:
+            h_img = pygame.transform.rotate(h_img, -head_tilt)
+        surface.blit(h_img, (head_x + head_lean_x, head_y - bob))
 
-        # 9. Cowboy hat — follows head exactly
+        # 9. Cowboy hat — follows head + hat bounce
         if self.cowboy_hat is not None:
-            hat = self.cowboy_hat
+            hat_img = self.cowboy_hat_f if flip else self.cowboy_hat
             hx  = head_x + 11 - 20 + head_lean_x
-            hy  = head_y - bob - 14
-            self._draw_part(surface, hat, hx, hy, head_tilt, flip)
+            hy  = head_y - bob - 14 + int(self.hat_offset_y)
+            if abs(head_tilt) > 2.0:
+                hat_img = pygame.transform.rotate(hat_img, -head_tilt)
+            surface.blit(hat_img, (hx, hy))
+
+        # (Hit flash removed — was drawing a white box over the character)
     
     def _draw_part(self, surface, img, x, y, angle_deg, flip):
         if flip:
             img = pygame.transform.flip(img, True, False)
         if abs(angle_deg) > 0.5:
-            big = pygame.transform.scale(
-                img, (img.get_width()*2, img.get_height()*2))
-            rot = pygame.transform.rotate(big, -angle_deg)
-            img = pygame.transform.smoothscale(
-                rot, (rot.get_width()//2, rot.get_height()//2))
+            img = pygame.transform.rotate(img, -angle_deg)
         surface.blit(img, (x, y))
     
     def _draw_part_img(self, img, angle_deg, flip):
@@ -610,35 +995,104 @@ class SkeletalBody:
         if flip:
             img = pygame.transform.flip(img, True, False)
         if abs(angle_deg) > 0.5:
-            big = pygame.transform.scale(
-                img, (img.get_width()*2, img.get_height()*2))
-            rot = pygame.transform.rotate(big, -angle_deg)
-            img = pygame.transform.smoothscale(
-                rot, (rot.get_width()//2, rot.get_height()//2))
+            img = pygame.transform.rotate(img, -angle_deg)
         return img
     
-    def trigger_ragdoll(self, x, y, facing):
-        """Convert body to ragdoll physics on death."""
+    def trigger_ragdoll(self, x, y, facing, hit_dir=0, is_cliff=False):
+        """Convert body to ragdoll physics on death.
+        
+        hit_dir: -1 = hit from left, +1 = hit from right, 0 = neutral
+        is_cliff: True = cliff fall (tumble mode, no explosion)
+        """
+        # --- Tier 3: Anticipation freeze ---
+        self._death_freeze = 0.08  # seconds to freeze before ragdoll
+        self._death_x = x
+        self._death_y = y
+        self._death_facing = facing
+        self._death_hit_dir = hit_dir
+        self._death_is_cliff = is_cliff
+        self._death_pending = True
+    
+    def _execute_ragdoll(self):
+        """Actually spawn ragdoll parts after the death freeze."""
+        x = self._death_x
+        y = self._death_y
+        facing = self._death_facing
+        hit_dir = self._death_hit_dir
+        
+        if self._death_is_cliff:
+            # --- Tier 4: Cliff tumble ---
+            # Individual parts falling together (no expensive composite rotation)
+            self.is_ragdoll = True
+            drift = facing * random.uniform(30, 80)
+            spin_base = facing * random.uniform(150, 300)
+            
+            parts = [
+                (self.head,  int(x)+13, int(y)),
+                (self.torso, int(x)+16, int(y)+22),
+                (self.arm_r, int(x)+30, int(y)+24),
+                (self.arm_l, int(x)+4,  int(y)+24),
+                (self.leg_r, int(x)+26, int(y)+46),
+                (self.leg_l, int(x)+8,  int(y)+46),
+            ]
+            if self.cowboy_hat is not None:
+                parts.append((self.cowboy_hat, int(x)+4, int(y)-10))
+            
+            for img, px, py in parts:
+                p = RagdollPart(
+                    img, px, py,
+                    drift + random.uniform(-20, 20),
+                    random.uniform(-30, 30),
+                    rest_angle=0, is_tumble=True
+                )
+                p.spin = spin_base + random.uniform(-50, 50)
+                self.parts_physics.append(p)
+            return
+        
         self.is_ragdoll = True
         
-        # Each part gets a random scatter velocity
+        # --- Tier 1: Directional ragdoll ---
+        # hit_dir > 0 means hit came from right, so parts fly LEFT
+        # hit_dir < 0 means hit came from left, so parts fly RIGHT
+        fly_dir = -hit_dir if hit_dir != 0 else facing
+        
+        # Base velocities biased by hit direction
+        fly_x = fly_dir * random.uniform(80, 180)
+        
+        # Rest angles for Tier 5 (settle pose)
+        # head=0 (upright), torso=90 (flat), arms=45, legs=-30
         part_configs = [
+            # (img, px, py, vx, vy, rest_angle)
             (self.head,  int(x)+13, int(y),
-             random.uniform(-200, 200),  random.uniform(-520, -320)),
+             fly_x + random.uniform(-60, 60),
+             random.uniform(-520, -350), 0),
             (self.torso, int(x)+16, int(y)+22,
-             random.uniform(-100, 100),  random.uniform(-200, -100)),
+             fly_x * 0.5 + random.uniform(-40, 40),
+             random.uniform(-200, -100), 90 * fly_dir),
             (self.arm_r, int(x)+30, int(y)+24,
-             random.uniform(100, 320),   random.uniform(-420, -220)),
+             fly_x + random.uniform(50, 150),
+             random.uniform(-420, -250), 45 * fly_dir),
             (self.arm_l, int(x)+4,  int(y)+24,
-             random.uniform(-320,-100),  random.uniform(-420, -220)),
+             fly_x + random.uniform(-150, -50),
+             random.uniform(-420, -250), -45 * fly_dir),
             (self.leg_r, int(x)+26, int(y)+46,
-             random.uniform(60, 220),    random.uniform(-320, -120)),
+             fly_x + random.uniform(30, 120),
+             random.uniform(-320, -150), -30 * fly_dir),
             (self.leg_l, int(x)+8,  int(y)+46,
-             random.uniform(-220,-60),   random.uniform(-320, -120)),
+             fly_x + random.uniform(-120, -30),
+             random.uniform(-320, -150), 30 * fly_dir),
         ]
         
-        for img, px, py, vx, vy in part_configs:
-            self.parts_physics.append(RagdollPart(img, px, py, vx, vy))
+        # Add hat as a ragdoll part too
+        if self.cowboy_hat is not None:
+            part_configs.append(
+                (self.cowboy_hat, int(x)+4, int(y)-10,
+                 fly_x + random.uniform(-100, 100),
+                 random.uniform(-600, -400), 0)
+            )
+        
+        for img, px, py, vx, vy, rest_ang in part_configs:
+            self.parts_physics.append(RagdollPart(img, px, py, vx, vy, rest_ang))
     
     def _update_ragdoll(self, dt):
         """Update all ragdoll parts."""
@@ -647,9 +1101,13 @@ class SkeletalBody:
 
 
 class RagdollPart:
-    """Individual body part with physics when player dies."""
+    """Individual body part with physics when player dies.
     
-    def __init__(self, img, x, y, vel_x, vel_y):
+    Features: multi-bounce (3), air drag, spin damping,
+    alpha fade after settling, rest-angle lerping.
+    """
+    
+    def __init__(self, img, x, y, vel_x, vel_y, rest_angle=0, is_tumble=False):
         self.img = img
         self.x = float(x)
         self.y = float(y)
@@ -657,42 +1115,99 @@ class RagdollPart:
         self.vel_y = vel_y
         self.angle = 0.0
         self.spin = random.uniform(-300, 300)
-        self.bounced = False
+        self.rest_angle = rest_angle
+        self.is_tumble = is_tumble
+        
+        # Tier 2: Multi-bounce
+        self.bounce_count = 0
+        self.max_bounces = 3
+        self.bounce_energy = [0.35, 0.20, 0.10]  # decreasing restitution
+        
+        # Tier 2: Fade
         self.settled = False
+        self.alpha = 255
+        self.fade_timer = 0.0
+        self.fade_duration = 2.0
+        self.fully_faded = False
+        
+        # Air drag
+        self.drag = 0.98
     
     def update(self, dt):
         """Update ragdoll part physics."""
-        if self.settled:
+        if self.fully_faded:
             return
         
+        # Tier 2: Fade after settling
+        if self.settled:
+            self.fade_timer += dt
+            t = min(1.0, self.fade_timer / self.fade_duration)
+            self.alpha = int(255 * (1.0 - t))
+            if self.alpha <= 0:
+                self.alpha = 0
+                self.fully_faded = True
+            
+            # Tier 5: Lerp angle toward rest pose while fading
+            angle_diff = self.rest_angle - self.angle
+            if abs(angle_diff) > 1:
+                self.angle += angle_diff * min(1.0, 3.0 * dt)
+            return
+        
+        # Physics
         self.vel_y += GRAVITY * dt
         self.vel_y = min(self.vel_y, MAX_FALL_SPEED)
+        
+        # Air drag
+        self.vel_x *= self.drag
+        
         self.x += self.vel_x * dt
         self.y += self.vel_y * dt
         self.angle += self.spin * dt
         
-        # Clamp to virtual canvas
+        # Spin damping
+        self.spin *= 0.995
+        
+        # Clamp to virtual canvas horizontally
         self.x = max(0, min(self.x, VIRTUAL_W))
         
-        # One bounce on ground
-        if self.y >= GROUND_Y - self.img.get_height():
-            self.y = GROUND_Y - self.img.get_height()
-            if not self.bounced:
-                self.vel_y *= -0.35
+        # Tier 4: Tumble — fall off screen then vanish
+        if self.is_tumble:
+            if self.y > GROUND_Y + 200:
+                self.settled = True
+                self.fade_duration = 0.3  # quick vanish for cliff falls
+            return
+        
+        # Ground collision with multi-bounce
+        ground_y = GROUND_Y - self.img.get_height()
+        if self.y >= ground_y:
+            self.y = ground_y
+            
+            if self.bounce_count < self.max_bounces:
+                restitution = self.bounce_energy[self.bounce_count]
+                self.vel_y *= -restitution
                 self.vel_x *= 0.6
                 self.spin *= 0.4
-                self.bounced = True
+                self.bounce_count += 1
             else:
+                # All bounces used — settle
                 self.vel_y = 0
-                self.vel_x *= 0.9
-                self.spin *= 0.9
+                self.vel_x *= 0.85
+                self.spin *= 0.85
                 
-                # Check if settled
                 if abs(self.vel_x) < 5 and abs(self.spin) < 10:
                     self.settled = True
     
     def draw(self, surface, camera):
-        """Draw ragdoll part."""
+        """Draw ragdoll part with alpha fade."""
+        if self.fully_faded:
+            return
+        
         rotated = pygame.transform.rotate(self.img, self.angle)
-        # Draw at world position
+        
+        # Apply alpha fade
+        if self.alpha < 255:
+            rotated = rotated.copy()
+            rotated.set_alpha(self.alpha)
+        
         surface.blit(rotated, rotated.get_rect(center=(int(self.x), int(self.y))))
+
