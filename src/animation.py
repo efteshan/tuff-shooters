@@ -12,6 +12,7 @@ from src.constants import (
     JUMP_HEAD_LAUNCH, JUMP_HEAD_FALL,
     JUMP_LERP_LEGS, JUMP_LERP_TORSO, JUMP_LERP_ARMS, JUMP_LERP_HEAD,
     JUMP_LAND_DURATION,
+    P1_HIDE_HAT_IF_CUSTOM,
 )
 
 
@@ -417,7 +418,9 @@ class AnimationManager:
 class SkeletalBody:
     """Skeletal animation system for player body parts."""
     
-    def __init__(self, player_id, assets):
+    def __init__(self, player_id, assets, custom_face=None):
+        self.player_id = player_id
+        self.current_head_scale = 1.0
         if player_id == 1:
             # Cowboy — brown jacket arms, brown trouser legs
             arm_r_color  = (148, 108,  42)   # brown jacket sleeve
@@ -467,6 +470,13 @@ class SkeletalBody:
             self.cowboy_hat_f = pygame.transform.flip(self.cowboy_hat, True, False)
         else:
             self.cowboy_hat_f = None
+
+        # Custom face (bobblehead) — pre-cache flipped version
+        self.custom_face = custom_face
+        if self.custom_face is not None:
+            self.custom_face_f = pygame.transform.flip(self.custom_face, True, False)
+        else:
+            self.custom_face_f = None
 
         # Animation state
         self.walk_cycle   = 0.0
@@ -962,21 +972,61 @@ class SkeletalBody:
             k_img = self.knife_surf_f if flip else self.knife_surf
             surface.blit(k_img, (kx, arm_y + 13))
 
-        # 8. Head — bob + tilt + lean + blink
+        # 8. Head — bob + tilt + lean + blink + **scale**
         head_lean_x = int(torso_lean)
-        if self.is_blinking:
-            h_img = self.head_closed_f if flip else self.head_closed
+        hs = self.current_head_scale  # visual-only multiplier
+        if self.custom_face is not None:
+            cf_img = self.custom_face_f if flip else self.custom_face
+            # Apply head scale
+            cf_w0, cf_h0 = cf_img.get_size()
+            new_w = max(1, int(cf_w0 * hs))
+            new_h = max(1, int(cf_h0 * hs))
+            cf_img = pygame.transform.smoothscale(cf_img, (new_w, new_h))
+            if abs(head_tilt) > 2.0:
+                cf_img = pygame.transform.rotate(cf_img, -head_tilt)
+            # Center on default head position (neck joint)
+            def_head_w, def_head_h = self.head.get_size()
+            cf_w, cf_h = cf_img.get_size()
+            cx_offset = (def_head_w - cf_w) // 2
+            cy_offset = (def_head_h - cf_h) // 2
+            surface.blit(cf_img, (head_x + head_lean_x + cx_offset, head_y - bob + cy_offset))
         else:
-            h_img = self.head_f if flip else self.head
-        if abs(head_tilt) > 2.0:
-            h_img = pygame.transform.rotate(h_img, -head_tilt)
-        surface.blit(h_img, (head_x + head_lean_x, head_y - bob))
+            if self.is_blinking:
+                h_img = self.head_closed_f if flip else self.head_closed
+            else:
+                h_img = self.head_f if flip else self.head
+            # Apply head scale
+            if hs != 1.0:
+                hw0, hh0 = h_img.get_size()
+                h_img = pygame.transform.smoothscale(h_img, (max(1, int(hw0 * hs)), max(1, int(hh0 * hs))))
+            if abs(head_tilt) > 2.0:
+                h_img = pygame.transform.rotate(h_img, -head_tilt)
+            # Center on default head pos so scaling doesn't shift position
+            if hs != 1.0:
+                def_w, def_h = self.head.get_size()
+                cur_w, cur_h = h_img.get_size()
+                cx_off = (def_w - cur_w) // 2
+                cy_off = (def_h - cur_h) // 2
+                surface.blit(h_img, (head_x + head_lean_x + cx_off, head_y - bob + cy_off))
+            else:
+                surface.blit(h_img, (head_x + head_lean_x, head_y - bob))
 
         # 9. Cowboy hat — follows head + hat bounce
-        if self.cowboy_hat is not None:
+        # Skip hat if P1 has custom face and P1_HIDE_HAT_IF_CUSTOM is True
+        draw_hat = self.cowboy_hat is not None
+        if draw_hat and self.player_id == 1 and self.custom_face is not None and P1_HIDE_HAT_IF_CUSTOM:
+            draw_hat = False
+        if draw_hat:
             hat_img = self.cowboy_hat_f if flip else self.cowboy_hat
             hx  = head_x + 11 - 20 + head_lean_x
             hy  = head_y - bob - 14 + int(self.hat_offset_y)
+            # Scale hat proportionally with head
+            if hs != 1.0:
+                hat_w0, hat_h0 = hat_img.get_size()
+                hat_img = pygame.transform.smoothscale(hat_img, (max(1, int(hat_w0 * hs)), max(1, int(hat_h0 * hs))))
+                # Adjust position for scale offset
+                hx -= int((hat_w0 * hs - hat_w0) / 2)
+                hy -= int((hat_h0 * hs - hat_h0) / 2)
             if abs(head_tilt) > 2.0:
                 hat_img = pygame.transform.rotate(hat_img, -head_tilt)
             surface.blit(hat_img, (hx, hy))

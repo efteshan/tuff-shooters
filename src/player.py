@@ -12,7 +12,8 @@ from src.constants import (
     HIT_STUN_DURATION, KNOCKBACK_FORCE,
     SHOTGUN_AMMO, BAZOOKA_COOLDOWN, BAZOOKA_AMMO,
     BARREL_EDGE_LEFT, BARREL_EDGE_RIGHT,
-    BOX_EDGE_LEFT, BOX_EDGE_RIGHT
+    BOX_EDGE_LEFT, BOX_EDGE_RIGHT,
+    HEAD_SIZE_BASE
 )
 
 
@@ -74,6 +75,16 @@ class Player(PhysicsObject, pygame.sprite.Sprite):
         
         # Skeletal body
         self.body = SkeletalBody(player_id, assets)
+        
+        # Head-streak / respawn state
+        self.start_x = start_x
+        self.head_streak = 0
+        self.head_scale = HEAD_SIZE_BASE
+        self.is_invulnerable = False
+        self.invuln_timer = 0.0
+        self.respawn_timer = -1.0   # <0 means not waiting to respawn
+        self.materialize_alpha = 255
+        self._materialize_timer = 0.0
         
         # Reference to game (will be set by game.py)
         self.game = None
@@ -342,11 +353,13 @@ class Player(PhysicsObject, pygame.sprite.Sprite):
                         killed = opponent.take_damage(KNIFE_DAMAGE, (hit_x, hit_y), kb)
                         particle_system.spawn_blood(hit_x, hit_y)
                         if killed and self.game:
-                            self.game._trigger_ko(opponent.player_id)
+                            self.game._handle_kill(opponent.player_id, is_self_death=False)
     
     def take_damage(self, amount: int, hit_pos: tuple, knockback_x: float = 0.0):
         """Apply damage. Returns True if this hit killed the player."""
         if not self.alive:
+            return False
+        if self.is_invulnerable:
             return False
             
         # Add hit-stop based on damage dealt (heavy hits = longer screen pause)
@@ -427,7 +440,7 @@ class Player(PhysicsObject, pygame.sprite.Sprite):
         if self.audio_manager:
             self.audio_manager.play_sound("player_death")
         if self.game:
-            self.game._trigger_ko(self.player_id)
+            self.game._handle_kill(self.player_id, is_self_death=True)
     
     def get_knife_hitbox(self) -> pygame.Rect:
         """Get knife attack hitbox."""
@@ -629,7 +642,23 @@ class Player(PhysicsObject, pygame.sprite.Sprite):
                     self.audio_manager.play_sound("pickup")
     
     def draw(self, surface, camera):
-        """Draw player body."""
+        """Draw player body with invuln flicker and materialize effect."""
+        if not self.alive:
+            return
         self.update_rect()
-        self.body.draw(surface, self.x, self.y, self.facing)
+        
+        # Invulnerability flicker — skip draw every other 100ms
+        if self.is_invulnerable:
+            import time
+            if int(time.monotonic() * 10) % 2 == 0:
+                return
+        
+        # Materialize fade-in
+        if self.materialize_alpha < 255:
+            temp = pygame.Surface((int(self.width + 48), int(self.height + 48)), pygame.SRCALPHA)
+            self.body.draw(temp, 24, 24, self.facing)
+            temp.set_alpha(self.materialize_alpha)
+            surface.blit(temp, (self.x - 24, self.y - 24))
+        else:
+            self.body.draw(surface, self.x, self.y, self.facing)
 

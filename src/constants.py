@@ -451,3 +451,11 @@ def load_or_placeholder(path: str, size: tuple, color: tuple) -> pygame.Surface:
         surf = pygame.Surface(size, pygame.SRCALPHA)
         surf.fill(color)
         return surf
+
+# ── Respawn / Head-Streak Tuning ──────────────────────────────
+RESPAWN_DELAY         = 1.5    # seconds before dead player respawns
+INVULN_DURATION       = 0.5    # seconds of invulnerability after respawn
+MAX_KILLS_TO_WIN      = 3      # kills needed to win the match
+HEAD_SIZE_BASE        = 1.0    # default head scale multiplier
+HEAD_SIZE_STEP        = 0.3    # head growth per kill (1.0 → 1.3 → 1.6 → win)
+P1_HIDE_HAT_IF_CUSTOM = True   # hide cowboy hat when P1 uses custom face

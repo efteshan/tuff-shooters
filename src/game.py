@@ -7,7 +7,9 @@ from src.constants import (
     CLIFF_DEATH_Y, CONTROLS, P1_COLOR, P2_COLOR, PLAYER_WIDTH, PLAYER_HEIGHT,
     load_or_placeholder, GIF_BLOOD_STRIP, GIF_BLOOD_FRAMES,
     GIF_KO_STRIP, GIF_KO_FRAMES, IMG_MENU_BG, MAX_AMMO,
-    KNOCKBACK_FORCE, BOX_X
+    KNOCKBACK_FORCE, BOX_X,
+    RESPAWN_DELAY, INVULN_DURATION, MAX_KILLS_TO_WIN,
+    HEAD_SIZE_BASE, HEAD_SIZE_STEP
 )
 from src.camera import Camera
 from src.player import Player
@@ -16,7 +18,7 @@ from src.pickups import PickupSpawnManager, ShotgunPickup, BazookaPickup, preloa
 from src.particles import ParticleSystem
 from src.bullet import ShotgunPellet, Rocket, Explosion
 from src.ui import HUD, KOScreen
-from src.menu import MainMenu, PauseMenu, GameOverMenu
+from src.menu import MainMenu, PauseMenu, GameOverMenu, DropFacesMenu
 from src.animation import SkeletalBody
 from src.audio import AudioManager
 
@@ -28,10 +30,6 @@ class Game:
         self.screen = screen
         self.state = "STATE_MENU"
         self.hit_stop = 0.0  # added for screen freeze on big hits
-        
-        # Bug fix #2: K.O. triggered flag
-        self.ko_triggered = False
-        self._death_delay_timer = 0.0
         
         # Initialize Audio Manager and load sounds
         self.audio_manager = AudioManager()
@@ -55,6 +53,14 @@ class Game:
         self.pause_menu.audio_manager = self.audio_manager
         self.game_over_menu = GameOverMenu(self.font_large, self.font_medium)
         self.game_over_menu.audio_manager = self.audio_manager
+        self.drop_faces_menu = DropFacesMenu(self.font_large, self.font_medium)
+        self.drop_faces_menu.audio_manager = self.audio_manager
+        
+        # Custom face surfaces (set via Drop Faces menu)
+        self.p1_custom_face = None
+        self.p2_custom_face = None
+        self.p1_head_base = 1.0
+        self.p2_head_base = 1.0
         
         # Initialize HUD
         self.hud = HUD(self.font_small)
@@ -156,6 +162,18 @@ class Game:
                 self.p2_score = 0
                 self.state = "STATE_PLAYING"
                 self.hud.is_paused = False
+            elif action == "drop_faces":
+                self.state = "STATE_DROP_FACES"
+        
+        elif self.state == "STATE_DROP_FACES":
+            action = self.drop_faces_menu.handle_event(event)
+            if action == "done":
+                # Store chosen faces and head base scales
+                self.p1_custom_face = self.drop_faces_menu.p1_face
+                self.p2_custom_face = self.drop_faces_menu.p2_face
+                self.p1_head_base = self.drop_faces_menu.p1_head_base
+                self.p2_head_base = self.drop_faces_menu.p2_head_base
+                self.state = "STATE_MENU"
         
         elif self.state == "STATE_PLAYING":
             # Check pause button click
@@ -201,42 +219,7 @@ class Game:
     
     def update(self, dt):
         """Update game state."""
-        if self.state == "STATE_MENU":
-            return
-        
-        if self.state == "STATE_KO":
-            self.ko_screen.update(dt)
-            if self.ko_screen.done:
-                self.reset_game()
-                self.state = "STATE_PLAYING"
-                self.hud.is_paused = False
-            return
-        
-        # Death delay — ragdoll plays while we wait before showing KO screen
-        if self.state == "STATE_DEATH_DELAY":
-            self._death_delay_timer -= dt
-            # Keep updating skeletal bodies (for ragdoll animation)
-            for player in [self.p1, self.p2]:
-                player.body.update(player.state, player.vel_x, player.on_ground, dt, player.vel_y)
-            # Keep updating particles
-            self.particles.update(dt)
-            
-            # Check if all ragdoll parts have fully faded or gone off-screen
-            all_vanished = True
-            for player in [self.p1, self.p2]:
-                for part in player.body.parts_physics:
-                    if not part.fully_faded:
-                        all_vanished = False
-                        break
-            
-            # Transition once timer elapsed AND all parts vanished (or max 4s safety)
-            if (self._death_delay_timer <= 0 and all_vanished) or self._death_delay_timer <= -2.5:
-                if self.p1_score >= 3 or self.p2_score >= 3:
-                    self.state = "STATE_GAME_OVER"
-                else:
-                    self.ko_screen.reset()
-                    self.state = "STATE_KO"
-                self.hud.is_paused = False
+        if self.state == "STATE_MENU" or self.state == "STATE_DROP_FACES":
             return
         
         if self.state == "STATE_PAUSED" or self.state == "STATE_GAME_OVER":
@@ -294,20 +277,39 @@ class Game:
                 # Fall damage — only on landing on GROUND, not platforms
                 if player.alive:
                     if player.on_ground and not player._was_on_ground:
-                        # Only apply if landing on actual ground level (not platforms/barrels/boxes)
                         ground_level_y = GROUND_Y - player.height
                         on_actual_ground = abs(player.y - ground_level_y) < 10
                         fall_height = player.y - player._highest_y
                         if on_actual_ground and fall_height > 200:
                             t = min(1.0, (fall_height - 200) / 300)
-                            dmg = int(5 + t * 10)  # 5 to 15
+                            dmg = int(5 + t * 10)
                             player.health = max(0, player.health - dmg)
                             self.camera.add_shake(2, 0.15)
                             if player.health <= 0:
                                 player.die(hit_dir=0)
-                                self._trigger_ko(player.player_id)
+                                self._handle_kill(player.player_id, is_self_death=True)
                         player._highest_y = player.y
                     player._was_on_ground = player.on_ground
+        
+        # Respawn logic — dead players respawn after delay
+        for player in [self.p1, self.p2]:
+            if not player.alive and player.respawn_timer >= 0:
+                player.respawn_timer -= dt
+                # Keep ragdoll animating
+                player.body.update(player.state, player.vel_x, player.on_ground, dt, player.vel_y)
+                if player.respawn_timer <= 0:
+                    self._respawn_player(player)
+            
+            # Invulnerability countdown
+            if player.is_invulnerable:
+                player.invuln_timer -= dt
+                if player.invuln_timer <= 0:
+                    player.is_invulnerable = False
+            
+            # Materialize fade-in (0→255 over 0.3s)
+            if player.alive and player.materialize_alpha < 255:
+                player._materialize_timer += dt
+                player.materialize_alpha = min(255, int(player._materialize_timer / 0.3 * 255))
         
         # Update knife combat
         if self.p1.alive:
@@ -358,12 +360,10 @@ class Game:
                         
                         if dist <= bullet.radius:
                             kb_dir = 1 if player.x > bullet.x else -1
-                            # Less damage, but large knockback
                             killed = player.take_damage(bullet.damage, player.rect.center, KNOCKBACK_FORCE * 1.5 * kb_dir)
                             if killed:
-                                self._trigger_ko(player.player_id)
+                                self._handle_kill(player.player_id, is_self_death=False)
                 continue
-
             # Check normal bullets/rockets
             collided = False
             
@@ -411,26 +411,77 @@ class Game:
                         killed = hit_player.take_damage(bullet.damage, hit_player.rect.center, KNOCKBACK_FORCE * 0.3 * kb_dir)
                         self.particles.spawn_blood(bullet.rect.centerx, bullet.rect.centery)
                         if killed:
-                            self._trigger_ko(hit_player.player_id)
+                            self._handle_kill(hit_player.player_id, is_self_death=False)
                     self.audio_manager.play_sound("impact")
                 
                 bullet.kill()
                 bullet.alive = False
     
-    def _trigger_ko(self, loser_id):
-        """Trigger K.O. state. Bug fix #2: prevent double trigger."""
-        if not self.ko_triggered:
-            self.ko_triggered = True
-
-            if loser_id == 1:
+    def _handle_kill(self, victim_id, is_self_death=False):
+        """Handle a player kill: streak logic, respawn timer, win check."""
+        victim = self.p1 if victim_id == 1 else self.p2
+        killer = self.p2 if victim_id == 1 else self.p1
+        
+        # Reset victim's streak
+        victim_base = self.p1_head_base if victim_id == 1 else self.p2_head_base
+        victim.head_streak = 0
+        victim.head_scale = victim_base
+        victim.body.current_head_scale = victim_base
+        
+        if not is_self_death:
+            # Reward killer
+            killer_base = self.p2_head_base if victim_id == 1 else self.p1_head_base
+            killer.head_streak += 1
+            killer.head_scale = killer_base + killer.head_streak * HEAD_SIZE_STEP
+            killer.body.current_head_scale = killer.head_scale
+            
+            # Increment score
+            if victim_id == 1:
                 self.p2_score += 1
             else:
                 self.p1_score += 1
-
-            # Death delay — let ragdoll play for 1.5s before KO screen
-            self.state = "STATE_DEATH_DELAY"
-            self._death_delay_timer = 1.5
-            self.hud.is_paused = False
+            
+            # Win check
+            if killer.head_streak >= MAX_KILLS_TO_WIN:
+                self.state = "STATE_GAME_OVER"
+                return
+        
+        # Start respawn timer on victim
+        victim.respawn_timer = RESPAWN_DELAY
+    
+    def _respawn_player(self, player):
+        """Teleport player back to start and make invulnerable."""
+        player.x = float(player.start_x)
+        player.y = float(GROUND_Y - PLAYER_HEIGHT)
+        player.vel_x = 0.0
+        player.vel_y = 0.0
+        player.health = 100
+        player.ammo = MAX_AMMO
+        player.alive = True
+        player.state = "IDLE"
+        player.facing = 1 if player.player_id == 1 else -1
+        custom_face = self.p1_custom_face if player.player_id == 1 else self.p2_custom_face
+        assets = self.p1_assets if player.player_id == 1 else self.p2_assets
+        player.body = SkeletalBody(player.player_id, assets, custom_face=custom_face)
+        player.body.current_head_scale = player.head_scale
+        player.knife_cooldown = 0.0
+        player.shoot_held_last = False
+        player.knife_held_last = False
+        player.knife_hit_pending = False
+        player.on_ground = True
+        player.dash_cooldown = 0.0
+        player.is_dashing = False
+        player.hit_stun_timer = 0.0
+        player.has_shotgun = False
+        player.has_bazooka = False
+        player._highest_y = player.y
+        player._was_on_ground = True
+        player.is_invulnerable = True
+        player.invuln_timer = INVULN_DURATION
+        player.materialize_alpha = 0
+        player._materialize_timer = 0.0
+        player.respawn_timer = -1.0
+        player.update_rect()
     
     def _spawn_shotgun_from_box(self):
         """Drop a shotgun or bazooka pickup at the box position."""
@@ -448,9 +499,6 @@ class Game:
     
     def reset_game(self):
         """Full match reset."""
-        # Bug fix #2: Reset K.O. flag
-        self.ko_triggered = False
-        
         # Reset Player 1
         self.p1.x = 320.0
         self.p1.y = float(GROUND_Y - PLAYER_HEIGHT)
@@ -461,7 +509,7 @@ class Game:
         self.p1.alive = True
         self.p1.state = "IDLE"
         self.p1.facing = 1
-        self.p1.body = SkeletalBody(1, self.p1_assets)
+        self.p1.body = SkeletalBody(1, self.p1_assets, custom_face=self.p1_custom_face)
         self.p1.knife_cooldown = 0.0
         self.p1.shoot_held_last = False
         self.p1.knife_held_last = False
@@ -474,7 +522,15 @@ class Game:
         self.p1.has_bazooka = False
         self.p1._highest_y = self.p1.y
         self.p1._was_on_ground = True
+        self.p1.head_streak = 0
+        self.p1.head_scale = self.p1_head_base
+        self.p1.is_invulnerable = False
+        self.p1.invuln_timer = 0.0
+        self.p1.respawn_timer = -1.0
+        self.p1.materialize_alpha = 255
+        self.p1._materialize_timer = 0.0
         self.p1.update_rect()
+        self.p1.body.current_head_scale = self.p1_head_base
         
         # Reset Player 2
         self.p2.x = 920.0
@@ -486,7 +542,7 @@ class Game:
         self.p2.alive = True
         self.p2.state = "IDLE"
         self.p2.facing = -1
-        self.p2.body = SkeletalBody(2, self.p2_assets)
+        self.p2.body = SkeletalBody(2, self.p2_assets, custom_face=self.p2_custom_face)
         self.p2.knife_cooldown = 0.0
         self.p2.shoot_held_last = False
         self.p2.knife_held_last = False
@@ -499,7 +555,15 @@ class Game:
         self.p2.has_bazooka = False
         self.p2._highest_y = self.p2.y
         self.p2._was_on_ground = True
+        self.p2.head_streak = 0
+        self.p2.head_scale = self.p2_head_base
+        self.p2.is_invulnerable = False
+        self.p2.invuln_timer = 0.0
+        self.p2.respawn_timer = -1.0
+        self.p2.materialize_alpha = 255
+        self.p2._materialize_timer = 0.0
         self.p2.update_rect()
+        self.p2.body.current_head_scale = self.p2_head_base
         
         # Clear all active projectiles and pickups
         self.bullet_group.empty()
@@ -530,6 +594,10 @@ class Game:
         """Draw current game state."""
         if self.state == "STATE_MENU":
             self.menu.draw(self.screen)
+            return
+        
+        if self.state == "STATE_DROP_FACES":
+            self.drop_faces_menu.draw(self.screen, self.menu_bg)
             return
         
         # Draw game (for PLAYING, PAUSED, and KO states)
