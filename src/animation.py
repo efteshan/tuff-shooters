@@ -13,6 +13,7 @@ from src.constants import (
     JUMP_LERP_LEGS, JUMP_LERP_TORSO, JUMP_LERP_ARMS, JUMP_LERP_HEAD,
     JUMP_LAND_DURATION,
     P1_HIDE_HAT_IF_CUSTOM,
+    HEAD_Y_OFFSET_P1, HEAD_Y_OFFSET_P2,
 )
 
 
@@ -972,9 +973,11 @@ class SkeletalBody:
             k_img = self.knife_surf_f if flip else self.knife_surf
             surface.blit(k_img, (kx, arm_y + 13))
 
-        # 8. Head — bob + tilt + lean + blink + **scale**
+        # 8. Head — bob + tilt + lean + blink + **scale** (grows UPWARD)
         head_lean_x = int(torso_lean)
         hs = self.current_head_scale  # visual-only multiplier
+        # Manual Y offset per player
+        head_y_manual = HEAD_Y_OFFSET_P1 if self.player_id == 1 else HEAD_Y_OFFSET_P2
         if self.custom_face is not None:
             cf_img = self.custom_face_f if flip else self.custom_face
             # Apply head scale
@@ -984,12 +987,12 @@ class SkeletalBody:
             cf_img = pygame.transform.smoothscale(cf_img, (new_w, new_h))
             if abs(head_tilt) > 2.0:
                 cf_img = pygame.transform.rotate(cf_img, -head_tilt)
-            # Center on default head position (neck joint)
+            # Anchor at BOTTOM (neck) — grow upward only
             def_head_w, def_head_h = self.head.get_size()
             cf_w, cf_h = cf_img.get_size()
             cx_offset = (def_head_w - cf_w) // 2
-            cy_offset = (def_head_h - cf_h) // 2
-            surface.blit(cf_img, (head_x + head_lean_x + cx_offset, head_y - bob + cy_offset))
+            cy_offset = def_head_h - cf_h  # bottom-anchor: all extra goes UP
+            surface.blit(cf_img, (head_x + head_lean_x + cx_offset, head_y - bob + cy_offset + head_y_manual))
         else:
             if self.is_blinking:
                 h_img = self.head_closed_f if flip else self.head_closed
@@ -1001,15 +1004,15 @@ class SkeletalBody:
                 h_img = pygame.transform.smoothscale(h_img, (max(1, int(hw0 * hs)), max(1, int(hh0 * hs))))
             if abs(head_tilt) > 2.0:
                 h_img = pygame.transform.rotate(h_img, -head_tilt)
-            # Center on default head pos so scaling doesn't shift position
+            # Anchor at BOTTOM (neck) — grow upward only
             if hs != 1.0:
                 def_w, def_h = self.head.get_size()
                 cur_w, cur_h = h_img.get_size()
                 cx_off = (def_w - cur_w) // 2
-                cy_off = (def_h - cur_h) // 2
-                surface.blit(h_img, (head_x + head_lean_x + cx_off, head_y - bob + cy_off))
+                cy_off = def_h - cur_h  # bottom-anchor
+                surface.blit(h_img, (head_x + head_lean_x + cx_off, head_y - bob + cy_off + head_y_manual))
             else:
-                surface.blit(h_img, (head_x + head_lean_x, head_y - bob))
+                surface.blit(h_img, (head_x + head_lean_x, head_y - bob + head_y_manual))
 
         # 9. Cowboy hat — follows head + hat bounce
         # Skip hat if P1 has custom face and P1_HIDE_HAT_IF_CUSTOM is True
@@ -1019,14 +1022,13 @@ class SkeletalBody:
         if draw_hat:
             hat_img = self.cowboy_hat_f if flip else self.cowboy_hat
             hx  = head_x + 11 - 20 + head_lean_x
-            hy  = head_y - bob - 14 + int(self.hat_offset_y)
-            # Scale hat proportionally with head
+            hy  = head_y - bob - 14 + int(self.hat_offset_y) + head_y_manual
+            # Scale hat proportionally with head — anchor at bottom
             if hs != 1.0:
                 hat_w0, hat_h0 = hat_img.get_size()
                 hat_img = pygame.transform.smoothscale(hat_img, (max(1, int(hat_w0 * hs)), max(1, int(hat_h0 * hs))))
-                # Adjust position for scale offset
                 hx -= int((hat_w0 * hs - hat_w0) / 2)
-                hy -= int((hat_h0 * hs - hat_h0) / 2)
+                hy -= int(hat_h0 * hs - hat_h0)  # push hat upward too
             if abs(head_tilt) > 2.0:
                 hat_img = pygame.transform.rotate(hat_img, -head_tilt)
             surface.blit(hat_img, (hx, hy))

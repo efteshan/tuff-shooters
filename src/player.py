@@ -644,6 +644,8 @@ class Player(PhysicsObject, pygame.sprite.Sprite):
     def draw(self, surface, camera):
         """Draw player body with invuln flicker and materialize effect."""
         if not self.alive:
+            # Still draw ragdoll / death animation parts
+            self.body.draw(surface, self.x, self.y, self.facing)
             return
         self.update_rect()
         

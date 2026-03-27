@@ -15,17 +15,23 @@ class MainMenu:
         self.audio_manager = None
         
         # Play button rect (centered on screen)
-        self.play_rect = pygame.Rect(SCREEN_W//2 - 100, SCREEN_H//2 - 70, 200, 70)
-        # Drop Faces button (below Play)
-        self.faces_rect = pygame.Rect(SCREEN_W//2 - 100, SCREEN_H//2 + 16, 200, 56)
+        self.play_rect = pygame.Rect(SCREEN_W//2 - 100, SCREEN_H//2 - 100, 200, 60)
+        # Head War button (below Play)
+        self.headwar_rect = pygame.Rect(SCREEN_W//2 - 100, SCREEN_H//2 - 28, 200, 60)
+        # Drop Faces button (below Head War)
+        self.faces_rect = pygame.Rect(SCREEN_W//2 - 100, SCREEN_H//2 + 44, 200, 48)
     
     def handle_event(self, event) -> str:
-        """Returns 'play', 'drop_faces', or None."""
+        """Returns 'play', 'head_war', 'drop_faces', or None."""
         if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
             if self.play_rect.collidepoint(event.pos):
                 if self.audio_manager:
                     self.audio_manager.play_sound("menu_click")
                 return "play"
+            if self.headwar_rect.collidepoint(event.pos):
+                if self.audio_manager:
+                    self.audio_manager.play_sound("menu_click")
+                return "head_war"
             if self.faces_rect.collidepoint(event.pos):
                 if self.audio_manager:
                     self.audio_manager.play_sound("menu_click")
@@ -49,6 +55,14 @@ class MainMenu:
         pygame.draw.rect(screen, (255, 255, 255), self.play_rect, 3, border_radius=12)
         play_text = self.font_medium.render("PLAY", True, (255, 255, 255))
         screen.blit(play_text, play_text.get_rect(center=self.play_rect.center))
+        
+        # Head War button
+        hover_hw = self.headwar_rect.collidepoint(mouse_pos)
+        hw_color = (220, 90, 40) if hover_hw else (180, 60, 25)
+        pygame.draw.rect(screen, hw_color, self.headwar_rect, border_radius=12)
+        pygame.draw.rect(screen, (255, 200, 100), self.headwar_rect, 3, border_radius=12)
+        hw_text = self.font_medium.render("HEAD WAR", True, (255, 240, 200))
+        screen.blit(hw_text, hw_text.get_rect(center=self.headwar_rect.center))
         
         # Drop Faces button
         hover2 = self.faces_rect.collidepoint(mouse_pos)

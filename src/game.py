@@ -30,6 +30,9 @@ class Game:
         self.screen = screen
         self.state = "STATE_MENU"
         self.hit_stop = 0.0  # added for screen freeze on big hits
+        self.head_war_mode = False  # True = head-streak + respawn, False = normal rounds
+        self.ko_winner_id = 0  # 1 or 2 — which player won
+        self.ko_timer = 0.0    # countdown for K.O. screen
         
         # Initialize Audio Manager and load sounds
         self.audio_manager = AudioManager()
@@ -157,6 +160,14 @@ class Game:
         if self.state == "STATE_MENU":
             action = self.menu.handle_event(event)
             if action == "play":
+                self.head_war_mode = False
+                self.reset_game()
+                self.p1_score = 0
+                self.p2_score = 0
+                self.state = "STATE_PLAYING"
+                self.hud.is_paused = False
+            elif action == "head_war":
+                self.head_war_mode = True
                 self.reset_game()
                 self.p1_score = 0
                 self.p2_score = 0
@@ -223,6 +234,50 @@ class Game:
             return
         
         if self.state == "STATE_PAUSED" or self.state == "STATE_GAME_OVER":
+            return
+        
+        if self.state == "STATE_KO":
+            # K.O. screen — winner can move, loser ragdoll plays, bullets fly
+            try:
+                self.ko_timer -= dt
+                keys = pygame.key.get_pressed()
+                winner = self.p1 if self.ko_winner_id == 1 else self.p2
+                loser = self.p2 if self.ko_winner_id == 1 else self.p1
+                
+                # Winner: movement only (no cliff death, no damage)
+                if winner.alive:
+                    winner.handle_input(keys, dt)
+                    winner.apply_physics(dt)
+                    winner.check_platform_collision(self.platforms)
+                    winner.check_trampoline_collision(self.trampoline_clouds)
+                    winner.body.update(winner.state, winner.vel_x, winner.on_ground, dt, winner.vel_y)
+                    # Prevent winner from falling off edge during KO
+                    if winner.x < 0:
+                        winner.x = 0
+                        winner.vel_x = 0
+                    elif winner.x > VIRTUAL_W - winner.width:
+                        winner.x = VIRTUAL_W - winner.width
+                        winner.vel_x = 0
+                
+                # Loser: keep ragdoll animating so parts fly apart
+                if not loser.alive:
+                    loser.body.update(loser.state, loser.vel_x, loser.on_ground, dt, loser.vel_y)
+                
+                # Update bullets so they don't freeze mid-air
+                self.bullet_group.update(dt)
+                # Update particles
+                self.particles.update(dt)
+                
+                # Update camera
+                p1_cx = self.p1.x + self.p1.width / 2
+                p2_cx = self.p2.x + self.p2.width / 2
+                self.camera.update(p1_cx, p2_cx, dt)
+            except Exception as e:
+                import traceback
+                traceback.print_exc()
+            
+            if self.ko_timer <= 0:
+                self.state = "STATE_GAME_OVER"
             return
         
         # STATE_PLAYING
@@ -422,32 +477,51 @@ class Game:
         victim = self.p1 if victim_id == 1 else self.p2
         killer = self.p2 if victim_id == 1 else self.p1
         
-        # Reset victim's streak
-        victim_base = self.p1_head_base if victim_id == 1 else self.p2_head_base
-        victim.head_streak = 0
-        victim.head_scale = victim_base
-        victim.body.current_head_scale = victim_base
-        
-        if not is_self_death:
-            # Reward killer
-            killer_base = self.p2_head_base if victim_id == 1 else self.p1_head_base
-            killer.head_streak += 1
-            killer.head_scale = killer_base + killer.head_streak * HEAD_SIZE_STEP
-            killer.body.current_head_scale = killer.head_scale
+        if self.head_war_mode:
+            # ── HEAD WAR: streak scaling + continuous respawn ──
+            victim_base = self.p1_head_base if victim_id == 1 else self.p2_head_base
+            victim.head_streak = 0
+            victim.head_scale = victim_base
+            victim.body.current_head_scale = victim_base
             
-            # Increment score
+            if not is_self_death:
+                killer_base = self.p2_head_base if victim_id == 1 else self.p1_head_base
+                killer.head_streak += 1
+                killer.head_scale = killer_base + killer.head_streak * HEAD_SIZE_STEP
+                killer.body.current_head_scale = killer.head_scale
+                
+                if victim_id == 1:
+                    self.p2_score += 1
+                else:
+                    self.p1_score += 1
+                
+                if killer.head_streak >= MAX_KILLS_TO_WIN:
+                    self.ko_winner_id = killer.player_id
+                    self.ko_timer = 5.0
+                    self.ko_screen.reset()
+                    self.state = "STATE_KO"
+                    return
+            
+            # Respawn victim after delay
+            victim.respawn_timer = RESPAWN_DELAY
+        else:
+            # ── NORMAL PLAY: classic round scoring, no head growth ──
+            # All deaths (including self-death) count as a point for opponent
             if victim_id == 1:
                 self.p2_score += 1
             else:
                 self.p1_score += 1
             
-            # Win check
-            if killer.head_streak >= MAX_KILLS_TO_WIN:
-                self.state = "STATE_GAME_OVER"
+            # Respawn victim after delay
+            victim.respawn_timer = RESPAWN_DELAY
+            
+            # Check win at 3 total score
+            if self.p1_score >= 3 or self.p2_score >= 3:
+                self.ko_winner_id = 1 if self.p1_score >= 3 else 2
+                self.ko_timer = 5.0
+                self.ko_screen.reset()
+                self.state = "STATE_KO"
                 return
-        
-        # Start respawn timer on victim
-        victim.respawn_timer = RESPAWN_DELAY
     
     def _respawn_player(self, player):
         """Teleport player back to start and make invulnerable."""
@@ -610,7 +684,44 @@ class Game:
         if self.state == "STATE_PAUSED":
             self.pause_menu.draw(self.screen)
         elif self.state == "STATE_KO":
-            self.ko_screen.draw(self.screen)
+            # Letter-by-letter "FAHHHHHHHHH" reveal
+            import math
+            elapsed = 5.0 - self.ko_timer
+            full_text = "FAHHHHHHHHH"
+            # Each letter appears every 50ms
+            chars_shown = min(len(full_text), int(elapsed / 0.05))
+            display_text = full_text[:chars_shown]
+            
+            if chars_shown > 0:
+                # Main font
+                ko_font = pygame.font.Font(None, 100)
+                
+                # Fiery glow layer
+                glow_font = pygame.font.Font(None, 106)
+                glow_color = (255, max(0, int(60 + 40 * math.sin(elapsed * 8))), 10)
+                glow_surf = glow_font.render(display_text, True, glow_color)
+                glow_alpha_surf = pygame.Surface(glow_surf.get_size(), pygame.SRCALPHA)
+                glow_alpha_surf.blit(glow_surf, (0, 0))
+                glow_alpha_surf.set_alpha(90)
+                gx = SCREEN_W // 2 - glow_alpha_surf.get_width() // 2
+                gy = SCREEN_H // 2 - glow_alpha_surf.get_height() // 2 - 20
+                self.screen.blit(glow_alpha_surf, (gx - 3, gy - 3))
+                
+                # Shadow
+                shadow_color = (40, 5, 0)
+                shadow_surf = ko_font.render(display_text, True, shadow_color)
+                sx = SCREEN_W // 2 - shadow_surf.get_width() // 2
+                sy = SCREEN_H // 2 - shadow_surf.get_height() // 2 - 20
+                self.screen.blit(shadow_surf, (sx + 4, sy + 4))
+                
+                # Main text — bright fire color
+                r = max(0, min(255, int(230 + 25 * math.sin(elapsed * 6))))
+                g = max(0, min(255, int(50 + 60 * math.sin(elapsed * 6 + 1.5))))
+                main_color = (r, g, 15)
+                main_surf = ko_font.render(display_text, True, main_color)
+                mx = SCREEN_W // 2 - main_surf.get_width() // 2
+                my = SCREEN_H // 2 - main_surf.get_height() // 2 - 20
+                self.screen.blit(main_surf, (mx, my))
         elif self.state == "STATE_GAME_OVER":
             winner_name = "PLAYER 1" if self.p1_score > self.p2_score else "PLAYER 2"
             self.game_over_menu.draw(self.screen, winner_name)
