@@ -314,23 +314,47 @@ def create_knife():
     pygame.draw.line(big, (95, 95, 95), (6*S, 2*S), (6*S, 7*S), 2)
     return pygame.transform.smoothscale(big, (26, 10))
 
+def create_shotgun():
+    """Rich 3D Shotgun for drawing in hand."""
+    S = 3
+    s = pygame.Surface((36*S, 18*S), pygame.SRCALPHA)
+    
+    pygame.draw.rect(s, (110,  60, 20),  ( 0,  6*S, 12*S, 4*S), border_radius=S)
+    pygame.draw.rect(s, (140,  80, 30),  ( 1*S, 7*S, 10*S, 2*S), border_radius=S)
+    
+    pygame.draw.rect(s, (50, 50, 50),  (10*S, 5*S, 10*S, 5*S), border_radius=S)
+    pygame.draw.rect(s, (80, 80, 80),  (11*S, 6*S, 8*S, 2*S), border_radius=S)
+    
+    pygame.draw.rect(s, (40, 40, 40), (20*S, 5*S, 16*S, 2*S))
+    pygame.draw.rect(s, (30, 30, 30), (20*S, 8*S, 12*S, 2*S))
+    pygame.draw.line(s, (100, 100, 100), (21*S, 5*S), (35*S, 5*S), 1)
+    
+    pygame.draw.rect(s, (90, 50, 15), (22*S, 7*S, 6*S, 4*S), border_radius=1)
+    for px in range(23, 28, 2):
+        pygame.draw.line(s, (50, 25, 5), (px*S, 7*S), (px*S, 10*S), 1)
+        
+    return pygame.transform.smoothscale(s, (36, 18))
+
 def create_bazooka():
-    """Side-view bazooka for drawing in hand."""
-    S = 2
-    big = pygame.Surface((30*S, 12*S), pygame.SRCALPHA)
-    body = (60, 80, 60)
-    metal = (50, 50, 50)
-    dark = (30, 40, 30)
+    """Rich 3D side-view RPG Bazooka for drawing in hand/shoulder."""
+    S = 3
+    s = pygame.Surface((44*S, 20*S), pygame.SRCALPHA)
     
-    # Main tube
-    pygame.draw.rect(big, body, (2*S, 3*S, 26*S, 6*S), border_radius=S)
-    pygame.draw.rect(big, dark, (2*S, 3*S, 26*S, 6*S), 1, border_radius=S)
+    pygame.draw.rect(s, (50,  65,  50), (4*S, 6*S, 36*S, 8*S), border_radius=S)
+    pygame.draw.rect(s, (70,  90,  70), (4*S, 6*S, 36*S, 3*S), border_radius=S)
+    pygame.draw.rect(s, (30,  40,  30), (4*S, 11*S, 36*S, 3*S), border_radius=S)
     
-    # Bells
-    pygame.draw.rect(big, metal, (0, 2*S, 4*S, 8*S))
-    pygame.draw.rect(big, metal, (26*S, 2*S, 4*S, 8*S))
+    pygame.draw.polygon(s, (150, 40, 40), [(40*S, 6*S), (44*S, 10*S), (40*S, 14*S)])
+    pygame.draw.polygon(s, (40, 40, 40), [(0, 4*S), (5*S, 6*S), (5*S, 14*S), (0, 16*S)])
+    pygame.draw.rect(s, (40, 40, 40), (36*S, 4*S, 4*S, 12*S), border_radius=1)
     
-    return pygame.transform.smoothscale(big, (30, 12))
+    pygame.draw.rect(s, (30, 30, 30), (16*S, 2*S, 12*S, 4*S), border_radius=1)
+    pygame.draw.rect(s, (20, 20, 20), (18*S, 0*S,  8*S, 2*S), border_radius=1)
+    
+    pygame.draw.rect(s, (30, 30, 30), (12*S, 14*S, 4*S, 4*S), border_radius=1)
+    pygame.draw.rect(s, (30, 30, 30), (28*S, 14*S, 4*S, 4*S), border_radius=1)
+
+    return pygame.transform.smoothscale(s, (44, 20))
 
 def create_cowboy_hat():
     """Smooth 3D cowboy hat — rendered at 4x then downsampled."""
@@ -445,6 +469,8 @@ class SkeletalBody:
         self.leg_r     = create_leg(leg_r_color)
         self.leg_l     = create_leg(leg_l_color)
         self.gun_surf  = create_gun()
+        self.shotgun_surf = create_shotgun()
+        self.shotgun_surf_f = pygame.transform.flip(self.shotgun_surf, True, False)
         self.bazooka_surf = create_bazooka()
         self.bazooka_surf_f = pygame.transform.flip(self.bazooka_surf, True, False)
         self.knife_surf = create_knife()
@@ -855,18 +881,28 @@ class SkeletalBody:
         arm_b_angle += self.jump_arm_b
 
         # Weapon arm override
+        cw = getattr(self, 'current_weapon', 'pistol')
+
+        if self.knife_phase == 0:
+            if cw == "shotgun":
+                arm_f_angle = -85 if not flip else 85
+                arm_b_angle = -60 if not flip else 60
+            elif cw == "bazooka":
+                arm_f_angle = -90 if not flip else 90
+
         weapon_angle = arm_f_angle
         arm_f_draw_x = arm_f_x
-        
-        if self.gun_recoil > 0 and self.knife_phase == 0:
-            if not flip:
-                weapon_angle = -85
-            else:
-                # Rotate CW (85) so flipped arm points perfectly OUTWARD to the left (thumb on top).
-                weapon_angle = 85
-                # Pygame rotation expands bounding box; shift left by 14px to flawlessly anchor the shoulder.
-                arm_f_draw_x -= 14
-                
+
+        if self.knife_phase == 0:
+            if cw == "shotgun" or cw == "bazooka":
+                if flip: 
+                    arm_f_draw_x -= 14
+            elif cw == "pistol" and self.gun_recoil > 0:
+                if not flip:
+                    weapon_angle = -85
+                else:
+                    weapon_angle = 85
+                    arm_f_draw_x -= 14
         if self.knife_phase > 0:
             weapon_angle = self.arm_r_angle
 
@@ -927,7 +963,8 @@ class SkeletalBody:
         else:
             recoil_arm_x = arm_f_x - 14
 
-        if getattr(self, 'current_weapon', 'pistol') == 'bazooka':
+        cw = getattr(self, 'current_weapon', 'pistol')
+        if cw == 'bazooka':
             gx = recoil_arm_x - 4
             gy = head_y + 6
             if not flip:
@@ -936,6 +973,16 @@ class SkeletalBody:
             else:
                 self.muzzle_x = gx + 1  # Anchored exactly at the tip pixel
                 self.muzzle_y = gy + 4
+        elif cw == 'shotgun':
+            gy = arm_y + 6
+            if not flip:
+                gx = recoil_arm_x + 8
+                self.muzzle_x = gx + 28
+                self.muzzle_y = gy + 5
+            else:
+                gx = recoil_arm_x - 30
+                self.muzzle_x = gx + 1
+                self.muzzle_y = gy + 5
         else:
             gy = head_y + 10
             if not flip:
@@ -948,8 +995,9 @@ class SkeletalBody:
                 self.muzzle_y = gy + 3
 
         # 6. Gun
-        if self.gun_recoil > 0 and self.knife_phase == 0:
-            if getattr(self, 'current_weapon', 'pistol') == 'bazooka':
+        if self.knife_phase == 0:
+            cw = getattr(self, 'current_weapon', 'pistol')
+            if cw == 'bazooka':
                 # Bazooka held on shoulder/head
                 gx = arm_f_draw_x - 4
                 gy = head_y + 6
@@ -957,7 +1005,17 @@ class SkeletalBody:
                     surface.blit(self.bazooka_surf, (gx, gy))
                 else:
                     surface.blit(self.bazooka_surf_f, (gx, gy))
-            else:
+            elif cw == 'shotgun':
+                # Shotgun held forward with two hands
+                # We align it around the front arm's tip
+                gy = arm_y + 6
+                if not flip:
+                    gx = arm_f_draw_x + 8
+                    surface.blit(self.shotgun_surf, (gx, gy))
+                else:
+                    gx = arm_f_draw_x - 30
+                    surface.blit(self.shotgun_surf_f, (gx, gy))
+            elif self.gun_recoil > 0:
                 # Pistol
                 gy = head_y + 10
                 if not flip:

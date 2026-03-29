@@ -58,6 +58,9 @@ class Player(PhysicsObject, pygame.sprite.Sprite):
         # Hit Stun
         self.hit_stun_timer = 0.0
         
+        # Audio
+        self.footstep_timer = 0.0
+
         # Dash state
         self.dash_timer = 0.0
         self.dash_cooldown = 0.0
@@ -123,6 +126,8 @@ class Player(PhysicsObject, pygame.sprite.Sprite):
             self.is_dashing = True
             self.dash_timer = DASH_DURATION
             self.dash_cooldown = DASH_COOLDOWN
+            if self.audio_manager:
+                self.audio_manager.play_sound("dash")
         if "dash" in ctrl:
             self.dash_held_last = keys[ctrl["dash"]]
             
@@ -160,12 +165,23 @@ class Player(PhysicsObject, pygame.sprite.Sprite):
                 self.vel_x = 0
                 if self.on_ground and self.state == "WALKING":
                     self.state = "IDLE"
+                    
+            if self.state == "WALKING" and self.on_ground:
+                self.footstep_timer -= dt
+                if self.footstep_timer <= 0:
+                    if self.audio_manager:
+                        self.audio_manager.play_sound("footstep")
+                    self.footstep_timer = 0.35
+            else:
+                self.footstep_timer = 0.0
         
         # Jump — only when on ground and not dashing
         if keys[ctrl["jump"]] and self.on_ground and not self.is_dashing:
             self.vel_y = -JUMP_FORCE
             self.on_ground = False
             self.state = "JUMPING"
+            if self.audio_manager:
+                self.audio_manager.play_sound("jump")
         
         # Crouch / Fast Fall
         if keys[ctrl["crouch"]] and not self.is_dashing:
@@ -259,6 +275,7 @@ class Player(PhysicsObject, pygame.sprite.Sprite):
         # If shotgun ammo hits 0, drop the shotgun
         if self.shotgun_ammo <= 0:
             self.has_shotgun = False
+            self.body.current_weapon = "pistol"
 
         # Spread: evenly distribute pellets across ±SHOTGUN_SPREAD_DEG
         gun_x = (self.x + PLAYER_WIDTH + 8
@@ -292,8 +309,8 @@ class Player(PhysicsObject, pygame.sprite.Sprite):
                 self.game.particles.spawn_muzzle_flash(flash_x, flash_y, self.facing, size=1.5)
                 self.game.particles.spawn_sparks(flash_x, flash_y)
         if self.audio_manager:
-            self.audio_manager.play_sound("shoot")
-            
+            self.audio_manager.play_sound("shotgun_fire")
+
     def try_bazooka(self):
         """Fire the bazooka."""
 
@@ -305,6 +322,7 @@ class Player(PhysicsObject, pygame.sprite.Sprite):
 
         if self.bazooka_ammo <= 0:
             self.has_bazooka = False
+            self.body.current_weapon = "pistol"
 
         gun_x = (self.x + PLAYER_WIDTH + 8
                  if self.facing == 1 else self.x - 8)
@@ -327,8 +345,8 @@ class Player(PhysicsObject, pygame.sprite.Sprite):
 
         self.body.trigger_gun_recoil("bazooka")
         if self.audio_manager:
-            self.audio_manager.play_sound("shoot")
-    
+            self.audio_manager.play_sound("bazooka_fire")
+
     def update_knife(self, opponent, particle_system, dt):
         """Update knife cooldown and hit detection."""
         if self.knife_cooldown > 0:
@@ -391,11 +409,18 @@ class Player(PhysicsObject, pygame.sprite.Sprite):
             return True
         return False
     
-    def heal(self, amount: int):
-        """Heal player. Bug fix #4: Cap at max health."""
-        self.health = min(self.max_health, self.health + amount)
-    
-    def add_ammo(self, amount: int):
+    def die(self, hit_dir=0):
+        """Handle death logic and trigger ragdoll."""
+        if not self.alive:
+            return
+        self.health = 0
+        self.alive = False
+        self.state = "DEAD"
+        if hasattr(self, 'body'):
+            self.body.trigger_ragdoll(self.x, self.y, self.facing, hit_dir=hit_dir)
+        if self.audio_manager:
+            self.audio_manager.play_sound("player_death")
+
         """Add ammo. Returns True if pickup was consumed."""
         if self.ammo >= self.max_ammo:
             return False
@@ -408,24 +433,19 @@ class Player(PhysicsObject, pygame.sprite.Sprite):
         self.shotgun_ammo = SHOTGUN_AMMO
         self.shotgun_cooldown = 0.0
         self.has_bazooka = False
+        self.body.current_weapon = "shotgun"
         if self.audio_manager:
-            self.audio_manager.play_sound("pickup")
-            
+            self.audio_manager.play_sound("pickup_weapon")
+
     def pickup_bazooka(self):
         """Pick up a bazooka from the world."""
         self.has_bazooka = True
         self.bazooka_ammo = BAZOOKA_AMMO
         self.bazooka_cooldown = 0.0
         self.has_shotgun = False
+        self.body.current_weapon = "bazooka"
         if self.audio_manager:
-            self.audio_manager.play_sound("pickup")
-    
-    def die(self, hit_dir=0):
-        """Kill player and trigger ragdoll."""
-        self.alive = False
-        self.state = "DEAD"
-        self.body.trigger_ragdoll(self.x, self.y, self.facing, hit_dir=hit_dir)
-        if self.audio_manager:
+            self.audio_manager.play_sound("pickup_weapon")
             self.audio_manager.play_sound("player_death")
     
     def take_cliff_death(self):
@@ -630,7 +650,7 @@ class Player(PhysicsObject, pygame.sprite.Sprite):
                 self.heal(pack.value)
                 pack.kill()
                 if self.audio_manager:
-                    self.audio_manager.play_sound("pickup")
+                    self.audio_manager.play_sound("pickup_health")
 
         # Ammo pickups
         hits = pygame.sprite.spritecollide(self, ammo_group, False)
@@ -639,7 +659,7 @@ class Player(PhysicsObject, pygame.sprite.Sprite):
                 self.ammo = self.max_ammo
                 pack.kill()
                 if self.audio_manager:
-                    self.audio_manager.play_sound("pickup")
+                    self.audio_manager.play_sound("pickup_ammo")
     
     def draw(self, surface, camera):
         """Draw player body with invuln flicker and materialize effect."""

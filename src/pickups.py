@@ -173,26 +173,32 @@ class ShotgunPickup(pygame.sprite.Sprite):
             bottomleft=(x, y))  # y = GROUND_Y
 
     def _make_shotgun_art(self):
-        """Simple side-view shotgun silhouette — 44x16px."""
-        s = pygame.Surface((44, 16), pygame.SRCALPHA)
-        body   = (130,  80, 30)
-        metal  = ( 80,  80, 90)
-        dark   = ( 40,  25, 10)
+        """Rich 3D Shotgun pickup with ground shadow."""
+        S = 2
+        s = pygame.Surface((36*S, 18*S), pygame.SRCALPHA)
+        # Ground shadow (pulsing ellipse)
+        import math
+        pygame.draw.ellipse(s, (0, 0, 0, 100), (0, 12*S, 36*S, 6*S))
+        
         # Stock (rear wooden part)
-        pygame.draw.rect(s, body,  ( 0,  4, 18, 10), border_radius=2)
-        pygame.draw.rect(s, dark,  ( 0,  4, 18, 10), 1, border_radius=2)
+        pygame.draw.rect(s, (110,  60, 20),  ( 0,  6*S, 12*S, 4*S), border_radius=S)
+        pygame.draw.rect(s, (140,  80, 30),  ( 1*S, 7*S, 10*S, 2*S), border_radius=S)
+        
         # Receiver body
-        pygame.draw.rect(s, body,  (14,  3, 18, 11), border_radius=2)
-        pygame.draw.rect(s, dark,  (14,  3, 18, 11), 1, border_radius=2)
-        # Barrel (metal tube)
-        pygame.draw.rect(s, metal, (28,  5, 16,  5), border_radius=1)
-        pygame.draw.rect(s, dark,  (28,  5, 16,  5), 1, border_radius=1)
-        # Trigger guard
-        pygame.draw.arc(s, dark,
-            pygame.Rect(16, 7, 8, 7), 3.14, 0, 1)
-        # Highlight line on barrel
-        pygame.draw.line(s, (140, 140, 155), (30, 6), (42, 6), 1)
-        return s
+        pygame.draw.rect(s, (50, 50, 50),  (10*S, 5*S, 10*S, 5*S), border_radius=S)
+        pygame.draw.rect(s, (80, 80, 80),  (11*S, 6*S, 8*S, 2*S), border_radius=S)
+        
+        # Barrel & Tube
+        pygame.draw.rect(s, (40, 40, 40), (20*S, 5*S, 16*S, 2*S))
+        pygame.draw.rect(s, (30, 30, 30), (20*S, 8*S, 12*S, 2*S))
+        pygame.draw.line(s, (100, 100, 100), (21*S, 5*S), (35*S, 5*S), 1)
+        
+        # Pump grip
+        pygame.draw.rect(s, (90, 50, 15), (22*S, 7*S, 6*S, 4*S), border_radius=1)
+        for px in range(23, 28, 2):
+            pygame.draw.line(s, (50, 25, 5), (px*S, 7*S), (px*S, 10*S), 1)
+            
+        return pygame.transform.smoothscale(s, (36, 18))
 
     def update(self, dt):
         self.lifetime -= dt
@@ -230,27 +236,37 @@ class BazookaPickup(pygame.sprite.Sprite):
             bottomleft=(x, y))
 
     def _make_bazooka_art(self):
-        """Simple side-view bazooka silhouette."""
-        s = pygame.Surface((50, 16), pygame.SRCALPHA)
-        body = (60, 80, 60)
-        metal = (50, 50, 50)
-        dark = (30, 40, 30)
+        """Rich 3D side-view RPG Bazooka with ground shadow."""
+        S = 2
+        s = pygame.Surface((44*S, 20*S), pygame.SRCALPHA)
+        # Ground shadow
+        import math
+        pygame.draw.ellipse(s, (0, 0, 0, 100), (0, 14*S, 44*S, 6*S))
         
-        # Main tube
-        pygame.draw.rect(s, body, (0, 3, 50, 10), border_radius=2)
-        pygame.draw.rect(s, dark, (0, 3, 50, 10), 1, border_radius=2)
+        # Main thick tube
+        # Gradient
+        pygame.draw.rect(s, (50,  65,  50), (4*S, 6*S, 36*S, 8*S), border_radius=S)
+        pygame.draw.rect(s, (70,  90,  70), (4*S, 6*S, 36*S, 3*S), border_radius=S)
+        pygame.draw.rect(s, (30,  40,  30), (4*S, 11*S, 36*S, 3*S), border_radius=S)
+        
+        # Rocket cone (front tip, green to red)
+        pygame.draw.polygon(s, (150, 40, 40), [(40*S, 6*S), (44*S, 10*S), (40*S, 14*S)])
         
         # Exhaust bell (back)
-        pygame.draw.polygon(s, metal, [(0, 3), (6, 3), (6, 13), (0, 13), (-4, 8)])
-        # Front bell
-        pygame.draw.rect(s, metal, (46, 2, 4, 12))
+        pygame.draw.polygon(s, (40, 40, 40), [(0, 4*S), (5*S, 6*S), (5*S, 14*S), (0, 16*S)])
         
-        # Sights
-        pygame.draw.rect(s, dark, (15, 0, 4, 3))
-        pygame.draw.rect(s, dark, (35, 0, 4, 3))
+        # Front thick band
+        pygame.draw.rect(s, (40, 40, 40), (36*S, 4*S, 4*S, 12*S), border_radius=1)
         
-        return s
+        # Optical Scope 
+        pygame.draw.rect(s, (30, 30, 30), (16*S, 2*S, 12*S, 4*S), border_radius=1)
+        pygame.draw.rect(s, (20, 20, 20), (18*S, 0*S,  8*S, 2*S), border_radius=1)
+        
+        # Handles underneath
+        pygame.draw.rect(s, (30, 30, 30), (12*S, 14*S, 4*S, 4*S), border_radius=1)
+        pygame.draw.rect(s, (30, 30, 30), (28*S, 14*S, 4*S, 4*S), border_radius=1)
 
+        return pygame.transform.smoothscale(s, (44, 20))
     def update(self, dt):
         self.lifetime -= dt
         self.glow_timer += dt

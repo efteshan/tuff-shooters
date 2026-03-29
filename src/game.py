@@ -107,13 +107,25 @@ class Game:
     def _load_audio(self):
         """Load all audio files."""
         self.audio_manager.load_sound("shoot", "assets/sounds/shoot.wav")
+        self.audio_manager.load_sound("shotgun_fire", "assets/sounds/shotgun_fire.wav")
+        self.audio_manager.load_sound("bazooka_fire", "assets/sounds/bazooka_fire.wav")
         self.audio_manager.load_sound("knife_swoosh", "assets/sounds/knife_swoosh.wav")
         self.audio_manager.load_sound("impact", "assets/sounds/impact.wav")
+        self.audio_manager.load_sound("box_burst", "assets/sounds/box_burst.wav")
         self.audio_manager.load_sound("player_death", "assets/sounds/player_death.wav")
         self.audio_manager.load_sound("pickup", "assets/sounds/pickup.wav")
+        self.audio_manager.load_sound("pickup_health", "assets/sounds/pickup_health.wav")
+        self.audio_manager.load_sound("pickup_ammo", "assets/sounds/pickup_ammo.wav")
+        self.audio_manager.load_sound("pickup_weapon", "assets/sounds/pickup_weapon.wav")
+        self.audio_manager.load_sound("jump", "assets/sounds/jump.wav")
+        self.audio_manager.load_sound("dash", "assets/sounds/dash.wav")
+        self.audio_manager.load_sound("footstep", "assets/sounds/footstep.wav")
+        self.audio_manager.load_sound("respawn", "assets/sounds/respawn.wav")
+        self.audio_manager.load_sound("win_screen", "assets/sounds/win_screen.wav")
         self.audio_manager.load_sound("menu_click", "assets/sounds/menu_click.wav")
         self.audio_manager.load_sound("game_over", "assets/sounds/game_over.wav")
-        self.audio_manager.load_music("assets/sounds/menu_music.wav")
+        self.audio_manager.load_sound("explosion", "assets/sounds/explosion.wav")
+        self.audio_manager.load_music("assets/sounds/bgm_combat.wav")
 
     
     def _load_assets(self):
@@ -438,6 +450,7 @@ class Game:
                     result = self.box.take_damage(dmg)
                     if result == 'destroyed':
                         self.camera.add_shake(10.0, 0.3)
+                        self.audio_manager.play_sound("box_burst")
                         self._spawn_shotgun_from_box()
             
             # vs Players
@@ -459,7 +472,7 @@ class Game:
                     exp = Explosion(bullet.rect.centerx, bullet.rect.centery, bullet.owner_id)
                     self.bullet_group.add(exp)
                     self.camera.add_shake(15.0, 0.4)
-                    self.audio_manager.play_sound("impact") # Add explosion sound later
+                    self.audio_manager.play_sound("explosion")
                 else:
                     if hit_player:
                         kb_dir = 1 if bullet.vel_x > 0 else -1
@@ -500,8 +513,9 @@ class Game:
                     self.ko_timer = 5.0
                     self.ko_screen.reset()
                     self.state = "STATE_KO"
+                    self.audio_manager.play_sound("win_screen")
                     return
-            
+
             # Respawn victim after delay
             victim.respawn_timer = RESPAWN_DELAY
         else:
@@ -521,10 +535,12 @@ class Game:
                 self.ko_timer = 5.0
                 self.ko_screen.reset()
                 self.state = "STATE_KO"
+                self.audio_manager.play_sound("win_screen")
                 return
     
     def _respawn_player(self, player):
         """Teleport player back to start and make invulnerable."""
+        self.audio_manager.play_sound("respawn")
         player.x = float(player.start_x)
         player.y = float(GROUND_Y - PLAYER_HEIGHT)
         player.vel_x = 0.0
