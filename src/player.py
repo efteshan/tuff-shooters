@@ -27,6 +27,7 @@ class Player(PhysicsObject, pygame.sprite.Sprite):
         # Identity
         self.player_id = player_id
         self.controls = controls
+        self.joystick = None
         
         # Position already set by PhysicsObject
         self.facing = 1 if player_id == 1 else -1
@@ -97,7 +98,52 @@ class Player(PhysicsObject, pygame.sprite.Sprite):
         """Update rect to match current position."""
         self.rect.x = int(self.x)
         self.rect.y = int(self.y)
-    
+
+    def is_action_pressed(self, action: str, keys) -> bool:
+        """Centralized input check for Keyboard + Gamepad."""
+        if action not in self.controls:
+            return False
+            
+        pressed = keys[self.controls[action]]
+        if pressed:
+            return True
+            
+        if self.joystick:
+            j = self.joystick
+            try:
+                if action == "left":
+                    hat = j.get_hat(0) if j.get_numhats() > 0 else (0, 0)
+                    if hat[0] == -1: return True
+                    if j.get_numaxes() > 0 and j.get_axis(0) < -0.5: return True
+                elif action == "right":
+                    hat = j.get_hat(0) if j.get_numhats() > 0 else (0, 0)
+                    if hat[0] == 1: return True
+                    if j.get_numaxes() > 0 and j.get_axis(0) > 0.5: return True
+                elif action == "crouch":
+                    hat = j.get_hat(0) if j.get_numhats() > 0 else (0, 0)
+                    if hat[1] == -1: return True
+                    if j.get_numaxes() > 1 and j.get_axis(1) > 0.5: return True
+                elif action == "jump":
+                    # L-Stick Up / R2 (Axis 1 Neg / Axis 5 / Button)
+                    hat = j.get_hat(0) if j.get_numhats() > 0 else (0, 0)
+                    if hat[1] == 1: return True
+                    if j.get_numaxes() > 1 and j.get_axis(1) < -0.5: return True
+                    # Many controllers map R2 as axis 5, and some as axis 4/2
+                    if j.get_numaxes() > 5 and j.get_axis(5) > 0.1: return True
+                elif action == "shoot":
+                    # R1 (Button 5)
+                    if j.get_numbuttons() > 5 and j.get_button(5): return True
+                elif action == "dash":
+                    # L2 (Axis 4) / A/Cross (Button 0)
+                    if j.get_numaxes() > 4 and j.get_axis(4) > 0.1: return True
+                    if j.get_numbuttons() > 0 and j.get_button(0): return True
+                elif action == "knife":
+                    # B/Circle (Button 1)
+                    if j.get_numbuttons() > 1 and j.get_button(1): return True
+            except pygame.error:
+                pass
+        return False
+
     def handle_input(self, keys, dt):
         """Process player input."""
         if not self.alive:
@@ -122,15 +168,15 @@ class Player(PhysicsObject, pygame.sprite.Sprite):
         moving = False
         
         # Handle Dash
-        if "dash" in ctrl and keys[ctrl["dash"]] and not self.dash_held_last and self.dash_cooldown <= 0:
+        is_dash_pressed = self.is_action_pressed("dash", keys)
+        if is_dash_pressed and not self.dash_held_last and self.dash_cooldown <= 0:
             self.is_dashing = True
             self.dash_timer = DASH_DURATION
             self.dash_cooldown = DASH_COOLDOWN
             if self.audio_manager:
                 self.audio_manager.play_sound("dash")
-        if "dash" in ctrl:
-            self.dash_held_last = keys[ctrl["dash"]]
-            
+        self.dash_held_last = is_dash_pressed
+
         if self.is_dashing:
             self.dash_timer -= dt
             if self.dash_timer <= 0:
@@ -149,13 +195,13 @@ class Player(PhysicsObject, pygame.sprite.Sprite):
 
         if not self.is_dashing:
             # Horizontal movement
-            if keys[ctrl["left"]]:
+            if self.is_action_pressed("left", keys):
                 self.vel_x = -PLAYER_SPEED
                 self.facing = -1
                 moving = True
                 if self.on_ground:
                     self.state = "WALKING"
-            elif keys[ctrl["right"]]:
+            elif self.is_action_pressed("right", keys):
                 self.vel_x = PLAYER_SPEED
                 self.facing = 1
                 moving = True
@@ -176,7 +222,7 @@ class Player(PhysicsObject, pygame.sprite.Sprite):
                 self.footstep_timer = 0.0
         
         # Jump — only when on ground and not dashing
-        if keys[ctrl["jump"]] and self.on_ground and not self.is_dashing:
+        if self.is_action_pressed("jump", keys) and self.on_ground and not self.is_dashing:
             self.vel_y = -JUMP_FORCE
             self.on_ground = False
             self.state = "JUMPING"
@@ -184,26 +230,26 @@ class Player(PhysicsObject, pygame.sprite.Sprite):
                 self.audio_manager.play_sound("jump")
         
         # Crouch / Fast Fall
-        if keys[ctrl["crouch"]] and not self.is_dashing:
+        if self.is_action_pressed("crouch", keys) and not self.is_dashing:
             if self.on_ground:
                 self.state = "CROUCHING"
             else:
                 self.vel_y = FAST_FALL_SPEED
         
         # Shoot — detect NEW press this frame (not held)
-        if keys[ctrl["shoot"]] and not self.shoot_held_last:
+        if self.is_action_pressed("shoot", keys) and not self.shoot_held_last:
             if self.has_bazooka and self.bazooka_ammo > 0:
                 self.try_bazooka()
             elif self.has_shotgun and self.shotgun_ammo > 0:
                 self.try_shotgun()
             else:
                 self.try_shoot()
-        self.shoot_held_last = keys[ctrl["shoot"]]
+        self.shoot_held_last = self.is_action_pressed("shoot", keys)
         
         # Knife — detect NEW press this frame
-        if keys[ctrl["knife"]] and not self.knife_held_last:
+        if self.is_action_pressed("knife", keys) and not self.knife_held_last:
             self.try_knife()
-        self.knife_held_last = keys[ctrl["knife"]]
+        self.knife_held_last = self.is_action_pressed("knife", keys)
         
         # Apply friction
         self.apply_friction(moving)
@@ -219,19 +265,25 @@ class Player(PhysicsObject, pygame.sprite.Sprite):
         # Bug fix #3: Check ammo > 0 BEFORE decrementing
         self.ammo = max(0, self.ammo - 1)
         
-        # Determine exact particle spawn position from body skeletal math
-        if hasattr(self.body, 'muzzle_x') and self.body.muzzle_x != 0:
-            flash_x, flash_y = self.body.muzzle_x, self.body.muzzle_y
+        if getattr(self, 'is_aiming', False):
+            cx = self.x + PLAYER_WIDTH / 2
+            cy = self.y + PLAYER_HEIGHT / 2 - 4
+            flash_x = cx + self.aim_x * 24
+            flash_y = cy + self.aim_y * 24
+            gun_x = cx + self.aim_x * 16
+            gun_y = cy + self.aim_y * 16
         else:
-            flash_x = self.x + (PLAYER_WIDTH + 8) if self.facing == 1 else self.x - 8
-            flash_y = self.y + 16
+            if hasattr(self.body, 'muzzle_x') and self.body.muzzle_x != 0:
+                flash_x, flash_y = self.body.muzzle_x, self.body.muzzle_y
+            else:
+                flash_x = self.x + (PLAYER_WIDTH + 8) if self.facing == 1 else self.x - 8
+                flash_y = self.y + 16
 
-        # Spawn bullet at gun-hand position (head/shoulder level)
-        gun_x = self.x + (PLAYER_WIDTH + 8) if self.facing == 1 else self.x - 8
-        gun_y = self.y + 16
+            gun_x = self.x + (PLAYER_WIDTH + 8) if self.facing == 1 else self.x - 8
+            gun_y = self.y + 16
         
         # Import here to avoid circular dependency
-        bullet = Bullet(gun_x, gun_y, self.facing, self.player_id)
+        bullet = Bullet(gun_x, gun_y, self.facing, self.player_id, self.aim_x if getattr(self, 'is_aiming', False) else None, self.aim_y if getattr(self, 'is_aiming', False) else None)
         if self.game:
             self.game.bullet_group.add(bullet)
             if hasattr(self.game, 'camera'):
@@ -278,9 +330,19 @@ class Player(PhysicsObject, pygame.sprite.Sprite):
             self.body.current_weapon = "pistol"
 
         # Spread: evenly distribute pellets across ±SHOTGUN_SPREAD_DEG
-        gun_x = (self.x + PLAYER_WIDTH + 8
-                 if self.facing == 1 else self.x - 8)
-        gun_y = self.y + 16
+        if getattr(self, 'is_aiming', False):
+            cx = self.x + PLAYER_WIDTH / 2
+            cy = self.y + PLAYER_HEIGHT / 2 - 4
+            gun_x = cx + self.aim_x * 16
+            gun_y = cy + self.aim_y * 16
+            flash_x_ov = cx + self.aim_x * 30
+            flash_y_ov = cy + self.aim_y * 30
+        else:
+            gun_x = (self.x + PLAYER_WIDTH + 8
+                     if self.facing == 1 else self.x - 8)
+            gun_y = self.y + 16
+            flash_x_ov = None
+            flash_y_ov = None
 
         if SHOTGUN_PELLETS == 1:
             angles = [0]
@@ -289,14 +351,21 @@ class Player(PhysicsObject, pygame.sprite.Sprite):
             angles = [-SHOTGUN_SPREAD_DEG + i * step
                       for i in range(SHOTGUN_PELLETS)]
 
+        import math
+        base_angle = None
+        if getattr(self, 'is_aiming', False):
+            base_angle = math.degrees(math.atan2(-self.aim_y, self.aim_x))
+            
         for angle in angles:
             pellet = ShotgunPellet(
-                gun_x, gun_y, self.facing, angle, self.player_id)
+                gun_x, gun_y, self.facing, angle, self.player_id, base_angle)
             if self.game:
                 self.game.bullet_group.add(pellet)
 
         # Particle coordinates (track tip of barrel perfectly)
-        if hasattr(self.body, 'muzzle_x') and self.body.muzzle_x != 0:
+        if getattr(self, 'is_aiming', False) and flash_x_ov is not None:
+            flash_x, flash_y = flash_x_ov, flash_y_ov
+        elif hasattr(self.body, 'muzzle_x') and self.body.muzzle_x != 0:
             flash_x, flash_y = self.body.muzzle_x, self.body.muzzle_y
         else:
             flash_x, flash_y = gun_x, gun_y
@@ -324,13 +393,25 @@ class Player(PhysicsObject, pygame.sprite.Sprite):
             self.has_bazooka = False
             self.body.current_weapon = "pistol"
 
-        gun_x = (self.x + PLAYER_WIDTH + 8
-                 if self.facing == 1 else self.x - 8)
-        gun_y = self.y + 12  # Bazooka slightly higher onto shoulder/head level
+        if getattr(self, 'is_aiming', False):
+            cx = self.x + PLAYER_WIDTH / 2
+            cy = self.y + 12
+            gun_x = cx + self.aim_x * 16
+            gun_y = cy + self.aim_y * 16
+            flash_x_ov = cx + self.aim_x * 40
+            flash_y_ov = cy + self.aim_y * 40
+        else:
+            gun_x = (self.x + PLAYER_WIDTH + 8
+                     if self.facing == 1 else self.x - 8)
+            gun_y = self.y + 12  # Bazooka slightly higher onto shoulder/head level
+            flash_x_ov = None
+            flash_y_ov = None
 
-        rocket = Rocket(gun_x, gun_y, self.facing, self.player_id)
+        rocket = Rocket(gun_x, gun_y, self.facing, self.player_id, self.aim_x if getattr(self, 'is_aiming', False) else None, self.aim_y if getattr(self, 'is_aiming', False) else None)
         
-        if hasattr(self.body, 'muzzle_x') and self.body.muzzle_x != 0:
+        if getattr(self, 'is_aiming', False) and flash_x_ov is not None:
+            flash_x, flash_y = flash_x_ov, flash_y_ov
+        elif hasattr(self.body, 'muzzle_x') and self.body.muzzle_x != 0:
             flash_x, flash_y = self.body.muzzle_x, self.body.muzzle_y
         else:
             flash_x, flash_y = gun_x, gun_y
@@ -408,6 +489,10 @@ class Player(PhysicsObject, pygame.sprite.Sprite):
                 self.game.camera.add_shake(4, 0.2)
             return True
         return False
+    
+    def heal(self, amount: int):
+        """Restore health up to max health."""
+        self.health = min(self.max_health, self.health + amount)
     
     def die(self, hit_dir=0):
         """Handle death logic and trigger ragdoll."""

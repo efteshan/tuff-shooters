@@ -43,7 +43,7 @@ class MainMenu:
         screen.blit(self.bg, (0, 0))
         
         # Title
-        title = self.font_large.render("DUEL-STRIKE", True, (255, 220, 50))
+        title = self.font_large.render("tuff shooters", True, (255, 220, 50))
         screen.blit(title, title.get_rect(centerx=SCREEN_W//2, y=180))
         
         mouse_pos = pygame.mouse.get_pos()

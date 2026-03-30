@@ -1,6 +1,6 @@
-"""
-Weapon data and logic for Duel-Strike.
-"""
+# src/weapons.py — Stats and data for every weapon in the game.
+# Each dict defines the properties of a weapon. Actual numbers come from constants.py.
+
 from src.constants import (
     BULLET_DAMAGE, MAX_AMMO,
     SHOTGUN_PELLETS, SHOTGUN_SPREAD_DEG, SHOTGUN_PELLET_DAMAGE,
@@ -8,6 +8,7 @@ from src.constants import (
     BAZOOKA_SPEED, BAZOOKA_DAMAGE, BAZOOKA_SPLASH_DAMAGE, BAZOOKA_SPLASH_RADIUS, BAZOOKA_COOLDOWN, BAZOOKA_AMMO
 )
 
+# Default pistol — unlimited fire rate, standard damage per bullet
 GUN_DATA = {
     "name":          "Pistol",
     "damage":        BULLET_DAMAGE,
@@ -15,6 +16,7 @@ GUN_DATA = {
     "fire_rate":     0.0,
 }
 
+# Melee weapon — short range but does decent damage with a quick cooldown
 KNIFE_DATA = {
     "name":     "Combat Knife",
     "damage":   10,
@@ -22,6 +24,7 @@ KNIFE_DATA = {
     "cooldown": 0.35,
 }
 
+# Shotgun — fires multiple pellets in a spread pattern, picked up from loot box
 SHOTGUN_DATA = {
     "name":           "Shotgun",
     "pellets":        SHOTGUN_PELLETS,
@@ -33,6 +36,7 @@ SHOTGUN_DATA = {
     "ammo_capacity":  SHOTGUN_AMMO,
 }
 
+# Bazooka — fires a slow rocket that explodes on impact with splash damage
 BAZOOKA_DATA = {
     "name":           "Bazooka",
     "speed":          BAZOOKA_SPEED,

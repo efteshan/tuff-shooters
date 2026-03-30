@@ -882,21 +882,38 @@ class SkeletalBody:
 
         # Weapon arm override
         cw = getattr(self, 'current_weapon', 'pistol')
+        recoil_kick_f = min(1.0, self.gun_recoil / 8.0) if self.gun_recoil > 0 else 0.0
 
         if self.knife_phase == 0:
             if cw == "shotgun":
-                arm_f_angle = -85 if not flip else 85
-                arm_b_angle = -60 if not flip else 60
+                base_f = -85 if not flip else 85
+                base_b = -85 if not flip else 85
+                tilt = recoil_kick_f * 20
+                if flip: tilt = -tilt
+                arm_f_angle = base_f + tilt
+                arm_b_angle = base_b + tilt
             elif cw == "bazooka":
-                arm_f_angle = -90 if not flip else 90
+                base_f = -90 if not flip else 90
+                tilt = recoil_kick_f * 10
+                if flip: tilt = -tilt
+                arm_f_angle = base_f + tilt
 
         weapon_angle = arm_f_angle
         arm_f_draw_x = arm_f_x
+        arm_b_draw_x = arm_b_x
 
         if self.knife_phase == 0:
             if cw == "shotgun" or cw == "bazooka":
-                if flip: 
+                if flip:
                     arm_f_draw_x -= 14
+                    if cw == "shotgun":
+                        arm_b_draw_x -= 14
+                        
+                push = int(recoil_kick_f * 6)
+                if push > 0:
+                    arm_f_draw_x = arm_f_draw_x - push if not flip else arm_f_draw_x + push
+                    if cw == "shotgun":
+                        arm_b_draw_x = arm_b_draw_x - push if not flip else arm_b_draw_x + push
             elif cw == "pistol" and self.gun_recoil > 0:
                 if not flip:
                     weapon_angle = -85
@@ -932,7 +949,7 @@ class SkeletalBody:
         ba_angle = arm_b_angle if not flip else -arm_b_angle
         if abs(ba_angle) > 2.0:
             ba_img = pygame.transform.rotate(ba_img, -ba_angle)
-        surface.blit(ba_img, (arm_b_x, arm_y))
+        surface.blit(ba_img, (arm_b_draw_x, arm_y))
 
         # 3. Torso — slight lean forward during walk + jump lean
         torso_lean = math.sin(t) * 1.5 + self.jump_torso_lean
@@ -947,83 +964,114 @@ class SkeletalBody:
             fl_img = pygame.transform.rotate(fl_img, -fl_angle)
         surface.blit(fl_img, (leg_f_x, leg_top_y))
 
-        # 5. Front arm
-        fa_img = self.arm_r_f if flip else self.arm_r
-        if abs(weapon_angle) > 2.0:
-            fa_img = pygame.transform.rotate(fa_img, -weapon_angle)
-        surface.blit(fa_img, (arm_f_draw_x, arm_y))
-
-        # Calculate base muzzle position (defaults to hand)
-        self.muzzle_x = arm_f_draw_x
-        self.muzzle_y = arm_y
-
-        # Calculate where the muzzle will be when firing, using the exact recoil pose coordinates predictably:
+        # Calculate where the hand/muzzle will be
         if not flip:
             recoil_arm_x = arm_f_x
         else:
             recoil_arm_x = arm_f_x - 14
 
+        recoil_kick_f = min(1.0, self.gun_recoil / 8.0) if self.gun_recoil > 0 else 0.0
+        kickback_x = int(recoil_kick_f * 6)
+        push_x = -kickback_x if not flip else kickback_x
+
+        # 4.5. Two-Handed Weapons (Behind Front Arm!)
         cw = getattr(self, 'current_weapon', 'pistol')
-        if cw == 'bazooka':
-            gx = recoil_arm_x - 4
-            gy = head_y + 6
-            if not flip:
-                self.muzzle_x = gx + 30
-                self.muzzle_y = gy + 4
-            else:
-                self.muzzle_x = gx + 1  # Anchored exactly at the tip pixel
-                self.muzzle_y = gy + 4
-        elif cw == 'shotgun':
-            gy = arm_y + 6
-            if not flip:
-                gx = recoil_arm_x + 8
-                self.muzzle_x = gx + 28
-                self.muzzle_y = gy + 5
-            else:
-                gx = recoil_arm_x - 30
-                self.muzzle_x = gx + 1
-                self.muzzle_y = gy + 5
-        else:
+        if self.knife_phase == 0:
+            if cw == 'bazooka':
+                if not flip:
+                    gx = recoil_arm_x - 4 + push_x
+                else:
+                    gx = recoil_arm_x - 18 + push_x
+                    
+                gy = head_y + 6
+                tilt = recoil_kick_f * 10
+                tilt = tilt if not flip else -tilt
+                bz_img = self.bazooka_surf if not flip else self.bazooka_surf_f 
+                if abs(tilt) > 1:
+                    bz_img = pygame.transform.rotate(bz_img, tilt)
+                surface.blit(bz_img, (gx, gy))
+
+                if not flip:
+                    self.muzzle_x = gx + 40
+                    self.muzzle_y = gy + 4 - int(recoil_kick_f * 4)
+                else:
+                    self.muzzle_x = gx + 4
+                    self.muzzle_y = gy + 4 - int(recoil_kick_f * 4)
+
+            elif cw == 'shotgun':
+                gy = arm_y + 4
+                tilt = recoil_kick_f * 20
+                tilt = tilt if not flip else -tilt
+                sg_img = self.shotgun_surf if not flip else self.shotgun_surf_f 
+                if abs(tilt) > 1:
+                    sg_img = pygame.transform.rotate(sg_img, tilt)
+
+                if not flip:
+                    gx = recoil_arm_x + 6 + push_x
+                    surface.blit(sg_img, (gx, gy - int(recoil_kick_f * 4)))
+                    self.muzzle_x = gx + 30
+                    self.muzzle_y = gy + 4 - int(recoil_kick_f * 8)
+                else:
+                    gx = recoil_arm_x - 20 + push_x
+                    surface.blit(sg_img, (gx, gy - int(recoil_kick_f * 4)))     
+                    self.muzzle_x = gx + 6
+                    self.muzzle_y = gy + 4 - int(recoil_kick_f * 8)
+
+        # 5. Front arm
+        fa_img = self.arm_r_f if flip else self.arm_r
+        if abs(weapon_angle) > 2.0:
+            fa_img = pygame.transform.rotate(fa_img, -weapon_angle)
+        
+        arm_f_final_x = arm_f_draw_x
+        arm_f_final_y = arm_y
+        if self.knife_phase == 0 and cw in ("shotgun", "bazooka"):
+             if recoil_kick_f > 0:
+                 arm_f_final_y -= int(recoil_kick_f * 4)
+             
+        surface.blit(fa_img, (arm_f_final_x, arm_f_final_y))
+
+        if not (self.knife_phase == 0 and cw in ('shotgun', 'bazooka')):
+            self.muzzle_x = arm_f_final_x
+            self.muzzle_y = arm_f_final_y
+
+        # 6. Gun (One-handed Pistol, in front of Front Arm)
+        if self.knife_phase == 0 and cw == 'pistol':
             gy = head_y + 10
+            
+            tilt = 0
+            if getattr(self, 'is_aiming', False):
+                aim_deg = math.degrees(math.atan2(-self.aim_y, self.aim_x))
+                aim_offset = aim_deg if not flip else (aim_deg - 180)
+                while aim_offset > 180: aim_offset -= 360
+                while aim_offset < -180: aim_offset += 360
+                tilt += aim_offset
+
             if not flip:
-                gx = recoil_arm_x + 16
+                gx = arm_f_final_x + 16
+                if self.gun_recoil > 0:
+                    p_img = self.gun_surf
+                    if abs(tilt) > 1:
+                        p_img = pygame.transform.rotate(p_img, tilt)
+                        new_rect = p_img.get_rect(center=self.gun_surf.get_rect(topleft=(gx, gy)).center)
+                        gx_d, gy_d = new_rect.x, new_rect.y
+                    else:
+                        gx_d, gy_d = gx, gy
+                    surface.blit(p_img, (gx_d, gy_d))
                 self.muzzle_x = gx + 22
                 self.muzzle_y = gy + 3
             else:
-                gx = recoil_arm_x - 16
-                self.muzzle_x = gx + 1  # Perfect 1-pixel overlap to touch the barrel peak without covering the center
+                gx = arm_f_final_x - 16
+                if self.gun_recoil > 0:
+                    p_img = self.gun_surf_f
+                    if abs(tilt) > 1:
+                        p_img = pygame.transform.rotate(p_img, tilt)
+                        new_rect = p_img.get_rect(center=self.gun_surf_f.get_rect(topleft=(gx, gy)).center)
+                        gx_d, gy_d = new_rect.x, new_rect.y
+                    else:
+                        gx_d, gy_d = gx, gy
+                    surface.blit(p_img, (gx_d, gy_d))
+                self.muzzle_x = gx + 1
                 self.muzzle_y = gy + 3
-
-        # 6. Gun
-        if self.knife_phase == 0:
-            cw = getattr(self, 'current_weapon', 'pistol')
-            if cw == 'bazooka':
-                # Bazooka held on shoulder/head
-                gx = arm_f_draw_x - 4
-                gy = head_y + 6
-                if not flip:
-                    surface.blit(self.bazooka_surf, (gx, gy))
-                else:
-                    surface.blit(self.bazooka_surf_f, (gx, gy))
-            elif cw == 'shotgun':
-                # Shotgun held forward with two hands
-                # We align it around the front arm's tip
-                gy = arm_y + 6
-                if not flip:
-                    gx = arm_f_draw_x + 8
-                    surface.blit(self.shotgun_surf, (gx, gy))
-                else:
-                    gx = arm_f_draw_x - 30
-                    surface.blit(self.shotgun_surf_f, (gx, gy))
-            elif self.gun_recoil > 0:
-                # Pistol
-                gy = head_y + 10
-                if not flip:
-                    gx = arm_f_draw_x + 16
-                    surface.blit(self.gun_surf, (gx, gy))
-                else:
-                    gx = arm_f_draw_x - 16
-                    surface.blit(self.gun_surf_f, (gx, gy))
 
         # 7. Knife
         if self.knife_phase > 0:

@@ -94,7 +94,17 @@ class Game:
         self.p1.audio_manager = self.audio_manager
         self.p2.game = self
         self.p2.audio_manager = self.audio_manager
-        
+
+        pygame.joystick.init()
+        self.joysticks = [pygame.joystick.Joystick(i) for i in range(pygame.joystick.get_count())]
+        for j in self.joysticks:
+            j.init()
+
+        if len(self.joysticks) > 0:
+            self.p1.joystick = self.joysticks[0]
+        if len(self.joysticks) > 1:
+            self.p2.joystick = self.joysticks[1]
+
         self.p1_score = 0
         self.p2_score = 0
         
@@ -169,6 +179,14 @@ class Game:
     
     def handle_event(self, event):
         """Handle pygame events."""
+        # Handle joystick hotplugging
+        if event.type == pygame.JOYDEVICEADDED or event.type == pygame.JOYDEVICEREMOVED:
+            self.joysticks = [pygame.joystick.Joystick(i) for i in range(pygame.joystick.get_count())]
+            for j in self.joysticks:
+                j.init()
+            self.p1.joystick = self.joysticks[0] if len(self.joysticks) > 0 else None
+            self.p2.joystick = self.joysticks[1] if len(self.joysticks) > 1 else None
+
         if self.state == "STATE_MENU":
             action = self.menu.handle_event(event)
             if action == "play":
@@ -199,17 +217,26 @@ class Game:
                 self.state = "STATE_MENU"
         
         elif self.state == "STATE_PLAYING":
-            # Check pause button click
-            if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+            # Check pause button click / controller pause (Button 3 / Y / Triangle)
+            if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:      
                 if self.pause_btn_rect.collidepoint(event.pos):
                     self.state = "STATE_PAUSED"
                     self.hud.is_paused = True
-            # Check Escape key
-            if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
+            
+            if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:   
+                self.state = "STATE_PAUSED"
+                self.hud.is_paused = True
+                
+            if getattr(event, 'type', None) == pygame.JOYBUTTONDOWN and event.button == 3:
                 self.state = "STATE_PAUSED"
                 self.hud.is_paused = True
         
         elif self.state == "STATE_PAUSED":
+            if getattr(event, 'type', None) == pygame.JOYBUTTONDOWN and event.button == 3:
+                self.state = "STATE_PLAYING"
+                self.hud.is_paused = False
+                return
+                
             action = self.pause_menu.handle_event(event)
             if action == "continue":
                 self.state = "STATE_PLAYING"

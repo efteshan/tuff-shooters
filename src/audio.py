@@ -1,16 +1,18 @@
-# src/audio.py
+# src/audio.py — Handles all sound effects and background music.
+# Sound files go in assets/sounds/. If a file is missing, it just won't play (no crash).
 
 import pygame
 
 class AudioManager:
-    """A manager for loading and playing sounds and music."""
+    """Loads .wav files by name and plays them on demand."""
 
     def __init__(self):
         pygame.mixer.init()
-        self.sounds = {}
+        self.sounds = {}       # {"gunshot": <Sound>, "jump": <Sound>, ...}
         self.music_path = None
 
     def load_sound(self, name, path):
+        """Try to load a sound file. If the file doesn't exist, store None so it fails silently."""
         try:
             sound = pygame.mixer.Sound(path)
             self.sounds[name] = sound
@@ -18,16 +20,16 @@ class AudioManager:
             self.sounds[name] = None
 
     def play_sound(self, name):
-        """Play a sound effect."""
+        """Play a previously loaded sound by its name."""
         if name in self.sounds and self.sounds[name]:
             self.sounds[name].play()
 
     def load_music(self, path):
-        """Load background music."""
+        """Set the path for background music (loaded later when play_music is called)."""
         self.music_path = path
 
     def play_music(self, loops=-1):
-        """Play background music."""
+        """Start background music. loops=-1 means loop forever."""
         if self.music_path:
             try:
                 pygame.mixer.music.load(self.music_path)
@@ -36,5 +38,5 @@ class AudioManager:
                 pass
 
     def stop_music(self):
-        """Stop the music."""
+        """Stop whatever music is currently playing."""
         pygame.mixer.music.stop()

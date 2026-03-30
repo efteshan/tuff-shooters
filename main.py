@@ -1,4 +1,4 @@
-# main.py
+# main.py — Game entry point. Run this file to start the game.
 
 import os
 import gc
@@ -7,10 +7,7 @@ from src.game import Game
 
 
 def main():
-    """Entry point for Duel-Strike game."""
-    # Set SDL render quality to "linear" (bilinear) BEFORE init.
-    # "best" uses anisotropic filtering which is very slow with pygame.SCALED.
-    # "linear" still looks smooth but is much faster.
+    # Use "linear" texture filtering for smooth scaling without killing performance
     os.environ["SDL_RENDER_SCALE_QUALITY"] = "linear"
     pygame.init()
     screen = pygame.display.set_mode(
@@ -24,24 +21,23 @@ def main():
     clock = pygame.time.Clock()
     running = True
     
-    # Disable automatic GC — it causes periodic 10-30ms freezes.
-    # Instead, do manual gen-0 collection every 10 seconds (~1ms).
+    # Python's automatic garbage collector causes random frame stutters (10-30ms freezes).
+    # We disable it and manually run a lightweight gen-0 sweep every 10 seconds instead.
     gc.disable()
     gc_timer = 0.0
     GC_INTERVAL = 10.0
     
     while running:
-        # Bug fix #10: Cap dt at 0.05 to prevent physics explosion
+        # Delta time in seconds. Capped at 0.05s so physics don't explode on lag spikes.
         dt = clock.tick(60) / 1000.0
         dt = min(dt, 0.05)
         
-        # Manual GC — gen-0 only, fast and predictable
+        # Run lightweight garbage collection on a timer instead of letting Python decide
         gc_timer += dt
         if gc_timer >= GC_INTERVAL:
             gc_timer = 0.0
-            gc.collect(0)  # gen-0 only: ~1ms, no full sweep
+            gc.collect(0)
         
-        # === EVENT HANDLING ===
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 running = False
@@ -50,15 +46,12 @@ def main():
                     running = False
             game.handle_event(event)
         
-        # === UPDATE ===
         game.update(dt)
-        
-        # === DRAW ===
         game.draw()
         
         pygame.display.flip()
     
-    # Re-enable GC before exit for clean shutdown
+    # Re-enable GC before exit so Python cleans up properly
     gc.enable()
     gc.collect()
     pygame.quit()
