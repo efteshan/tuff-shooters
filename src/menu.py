@@ -7,7 +7,8 @@ from src.constants import SCREEN_W, SCREEN_H
 
 class MainMenu:
     """Title screen with Play, Head War, and Settings buttons.
-    Background is a video frame passed in each draw call instead of a static image."""
+    Background is a video frame passed in each draw call instead of a static image.
+    Buttons use custom PNG images with normal/hover states for an animated feel."""
     
     def __init__(self, bg_image, font_large, font_medium):
         self.bg = bg_image  # fallback static image when video is unavailable
@@ -19,6 +20,55 @@ class MainMenu:
         self.play_rect = pygame.Rect(SCREEN_W//2 - 100, SCREEN_H//2 - 100, 200, 60)
         self.headwar_rect = pygame.Rect(SCREEN_W//2 - 100, SCREEN_H//2 - 28, 200, 60)
         self.settings_rect = pygame.Rect(SCREEN_W//2 - 100, SCREEN_H//2 + 44, 200, 48)
+        
+        # Load custom button images (normal + hover for each)
+        self.play_imgs = self._load_button_pair(
+            "assets/ui/buttons/play.png",
+            "assets/ui/buttons/play_hover.png",
+            self.play_rect
+        )
+        self.headwar_imgs = self._load_button_pair(
+            "assets/ui/buttons/headwar.png",
+            "assets/ui/buttons/headwar_hover.png",
+            self.headwar_rect
+        )
+        self.settings_imgs = self._load_button_pair(
+            "assets/ui/buttons/settings.png",
+            "assets/ui/buttons/settings_hover.png",
+            self.settings_rect
+        )
+    
+    def _load_button_pair(self, normal_path, hover_path, target_rect):
+        """Load a normal + hover image pair. Scales both to fit target_rect proportionally.
+        Returns (normal_surface, hover_surface) or None if either file is missing."""
+        try:
+            if not os.path.isfile(normal_path) or not os.path.isfile(hover_path):
+                return None
+            
+            normal_img = pygame.image.load(normal_path).convert_alpha()
+            hover_img = pygame.image.load(hover_path).convert_alpha()
+            
+            # Scale both images to fit the button rect while keeping aspect ratio
+            normal_scaled = self._scale_to_fit(normal_img, target_rect.width, target_rect.height)
+            hover_scaled = self._scale_to_fit(hover_img, target_rect.width, target_rect.height)
+            
+            # Update the button rect to match the actual scaled image size (centered at same position)
+            new_w, new_h = normal_scaled.get_size()
+            target_rect.width = new_w
+            target_rect.height = new_h
+            target_rect.centerx = SCREEN_W // 2
+            
+            return (normal_scaled, hover_scaled)
+        except Exception:
+            return None
+    
+    def _scale_to_fit(self, surface, max_w, max_h):
+        """Scale a surface to fit within max_w x max_h while preserving aspect ratio."""
+        w, h = surface.get_size()
+        scale = min(max_w / w, max_h / h)
+        new_w = max(1, int(w * scale))
+        new_h = max(1, int(h * scale))
+        return pygame.transform.smoothscale(surface, (new_w, new_h))
     
     def handle_event(self, event) -> str:
         """Check if a menu button was clicked. Returns the button name or None."""
@@ -50,29 +100,31 @@ class MainMenu:
         
         mouse_pos = pygame.mouse.get_pos()
         
-        # Play button — green glow on hover
-        hover = self.play_rect.collidepoint(mouse_pos)
-        btn_color = (80, 200, 80) if hover else (50, 150, 50)
-        pygame.draw.rect(screen, btn_color, self.play_rect, border_radius=12)
-        pygame.draw.rect(screen, (255, 255, 255), self.play_rect, 3, border_radius=12)
-        play_text = self.font_medium.render("PLAY", True, (255, 255, 255))
-        screen.blit(play_text, play_text.get_rect(center=self.play_rect.center))
+        # Draw each button — custom image if loaded, fallback to colored rect if not
+        self._draw_button(screen, mouse_pos, self.play_rect, self.play_imgs,
+                          "PLAY", (80, 200, 80), (50, 150, 50), (255, 255, 255), 3)
+        self._draw_button(screen, mouse_pos, self.headwar_rect, self.headwar_imgs,
+                          "HEAD WAR", (220, 90, 40), (180, 60, 25), (255, 200, 100), 3)
+        self._draw_button(screen, mouse_pos, self.settings_rect, self.settings_imgs,
+                          "Settings", (185, 145, 65), (148, 108, 42), (255, 220, 150), 2)
+    
+    def _draw_button(self, screen, mouse_pos, rect, imgs, fallback_text,
+                     hover_color, normal_color, border_color, border_width):
+        """Draw a single menu button. Uses custom images if available, falls back to colored rect."""
+        hovering = rect.collidepoint(mouse_pos)
         
-        # Head War button — orange glow on hover
-        hover_hw = self.headwar_rect.collidepoint(mouse_pos)
-        hw_color = (220, 90, 40) if hover_hw else (180, 60, 25)
-        pygame.draw.rect(screen, hw_color, self.headwar_rect, border_radius=12)
-        pygame.draw.rect(screen, (255, 200, 100), self.headwar_rect, 3, border_radius=12)
-        hw_text = self.font_medium.render("HEAD WAR", True, (255, 240, 200))
-        screen.blit(hw_text, hw_text.get_rect(center=self.headwar_rect.center))
-        
-        # Settings button — warm brown glow on hover
-        hover_s = self.settings_rect.collidepoint(mouse_pos)
-        btn_s_color = (185, 145, 65) if hover_s else (148, 108, 42)
-        pygame.draw.rect(screen, btn_s_color, self.settings_rect, border_radius=12)
-        pygame.draw.rect(screen, (255, 220, 150), self.settings_rect, 2, border_radius=12)
-        settings_text = self.font_medium.render("Settings", True, (255, 255, 240))
-        screen.blit(settings_text, settings_text.get_rect(center=self.settings_rect.center))
+        if imgs is not None:
+            # Custom image mode — swap between normal and hover
+            normal_surf, hover_surf = imgs
+            surf = hover_surf if hovering else normal_surf
+            screen.blit(surf, rect.topleft)
+        else:
+            # Fallback: draw the old colored rectangle + text
+            btn_color = hover_color if hovering else normal_color
+            pygame.draw.rect(screen, btn_color, rect, border_radius=12)
+            pygame.draw.rect(screen, border_color, rect, border_width, border_radius=12)
+            text = self.font_medium.render(fallback_text, True, (255, 255, 255))
+            screen.blit(text, text.get_rect(center=rect.center))
 
 
 class PauseMenu:
