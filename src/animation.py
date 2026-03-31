@@ -1,4 +1,6 @@
-# src/animation.py
+# src/animation.py — Skeletal animation system for player characters.
+# Draws body parts (head, torso, arms, legs) with procedural pixel art.
+# Handles walk cycles, jump poses, knife swings, gun recoil, squash/stretch, and ragdoll death.
 
 import pygame
 import math
@@ -392,7 +394,8 @@ def create_cowboy_hat():
 
 
 class AnimationManager:
-    """Manages animation state and timing for various game objects."""
+    """Simple frame-by-frame animation player. Register named sequences,
+    then call update() each frame to advance and get_frame() to render."""
     
     def __init__(self):
         self.animations = {}
@@ -441,7 +444,10 @@ class AnimationManager:
 
 
 class SkeletalBody:
-    """Skeletal animation system for player body parts."""
+    """The player's animated body. Each body part (head, torso, arms, legs) is a small
+    pygame Surface that gets rotated and positioned each frame based on the current
+    animation state (idle, walking, jumping, attacking, etc.).
+    Also handles ragdoll death physics and custom face images."""
     
     def __init__(self, player_id, assets, custom_face=None):
         self.player_id = player_id
@@ -798,28 +804,28 @@ class SkeletalBody:
             self.hit_flash = max(0.0, self.hit_flash - dt)
     
     def trigger_knife(self):
-        """Called when knife key is pressed."""
+        """Start the knife swing animation."""
         if self.knife_phase == 0:
             self.knife_phase = 1
     
     def trigger_gun_recoil(self, weapon_type="pistol"):
-        """Called when a bullet is fired."""
+        """Kick the arm back to simulate gun recoil. Different weapons have different feels."""
         self.gun_recoil = 8.0
         self.current_weapon = weapon_type
         self.arm_r_angle = 25.0 if self.knife_phase == 0 else self.arm_r_angle
     
     def trigger_hit(self):
-        """Called when the player takes damage."""
+        """Flash the body white briefly when taking damage."""
         self.hit_flash = 0.15
 
     def trigger_land(self):
-        """Called when the player lands — squash + hat kick."""
+        """Squash the body horizontally when landing on the ground (cartoon impact feel)."""
         self.squash_x = 1.12
         self.squash_y = 0.88
         self.hat_vel_y = -5.0
 
     def trigger_launch(self):
-        """Called when the player jumps — stretch."""
+        """Stretch the body vertically when jumping (cartoon launch feel)."""
         self.squash_x = 0.92
         self.squash_y = 1.10
     def draw(self, surface, x, y, facing, camera=None):
@@ -1259,11 +1265,9 @@ class SkeletalBody:
 
 
 class RagdollPart:
-    """Individual body part with physics when player dies.
-    
-    Features: multi-bounce (3), air drag, spin damping,
-    alpha fade after settling, rest-angle lerping.
-    """
+    """One piece of the death ragdoll (head, torso, arm, leg, etc.).
+    Has its own velocity, spin, gravity, and bounces off the ground a few times
+    before fading out. Used to create the "body flying apart" effect on death."""
     
     def __init__(self, img, x, y, vel_x, vel_y, rest_angle=0, is_tumble=False):
         self.img = img

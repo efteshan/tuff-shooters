@@ -1,7 +1,13 @@
-# src/game.py
+# src/game.py — The main game loop and state machine.
+# Controls everything: menus, gameplay, collisions, scoring, and rendering.
+# States: STATE_MENU → STATE_PLAY → STATE_PAUSED / STATE_KO / STATE_GAME_OVER.
 
 import pygame
 import random
+try:
+    import cv2
+except ImportError:
+    cv2 = None
 from src.constants import (
     SCREEN_W, SCREEN_H, VIRTUAL_W, VIRTUAL_H, SKY_COLOR, GROUND_Y,
     CLIFF_DEATH_Y, CONTROLS, P1_COLOR, P2_COLOR, PLAYER_WIDTH, PLAYER_HEIGHT,
@@ -24,11 +30,28 @@ from src.audio import AudioManager
 
 
 class Game:
-    """Master game controller with state machine."""
+    """Top-level game controller. Manages the state machine (menu/play/pause/etc.),
+    creates all game objects, and runs the update/draw loop each frame."""
     
     def __init__(self, screen):
         self.screen = screen
-        self.state = "STATE_MENU"
+        self.state = "STATE_LOADING"
+        self.loading_timer = 5.0
+        self.current_video_frame = None
+        self.cap = None
+        self.video_fps = 30
+        
+        if cv2 is not None:
+            try:
+                self.cap = cv2.VideoCapture("assets/loading.mp4")
+                if not self.cap.isOpened():
+                    self.cap = None
+                else:
+                    self.video_fps = self.cap.get(cv2.CAP_PROP_FPS)
+                    if self.video_fps <= 0:
+                        self.video_fps = 30
+            except Exception:
+                self.cap = None
         self.hit_stop = 0.0  # added for screen freeze on big hits
         self.head_war_mode = False  # True = head-streak + respawn, False = normal rounds
         self.ko_winner_id = 0  # 1 or 2 — which player won
@@ -115,7 +138,7 @@ class Game:
         self.audio_manager.play_music()
 
     def _load_audio(self):
-        """Load all audio files."""
+        """Load all sound effect files. Missing files are silently skipped."""
         self.audio_manager.load_sound("shoot", "assets/sounds/shoot.wav")
         self.audio_manager.load_sound("shotgun_fire", "assets/sounds/shotgun_fire.wav")
         self.audio_manager.load_sound("bazooka_fire", "assets/sounds/bazooka_fire.wav")
@@ -139,7 +162,7 @@ class Game:
 
     
     def _load_assets(self):
-        """Load all game assets with placeholders."""
+        """Load all sprite images and build the asset dicts used by players and the arena."""
         # Player 1 assets
         self.p1_assets = {
             'head': load_or_placeholder('assets/sprites/p1_head.png', (20, 20), P1_COLOR),
@@ -178,7 +201,10 @@ class Game:
         self.menu_bg = load_or_placeholder('assets/ui/menu_bg.png', (SCREEN_W, SCREEN_H), (40, 40, 60))
     
     def handle_event(self, event):
-        """Handle pygame events."""
+        """Route input events to the correct handler based on current game state."""
+        if self.state == "STATE_LOADING":
+            return
+            
         # Handle joystick hotplugging
         if event.type == pygame.JOYDEVICEADDED or event.type == pygame.JOYDEVICEREMOVED:
             self.joysticks = [pygame.joystick.Joystick(i) for i in range(pygame.joystick.get_count())]
@@ -268,7 +294,16 @@ class Game:
                 self.hud.is_paused = False
     
     def update(self, dt):
-        """Update game state."""
+        """Run one frame of game logic: physics, combat, collisions, timers, spawns."""
+        if self.state == "STATE_LOADING":
+            self.loading_timer -= dt
+            if self.loading_timer <= 0:
+                if self.cap:
+                    self.cap.release()
+                    self.cap = None
+                self.state = "STATE_MENU"
+            return
+            
         if self.state == "STATE_MENU" or self.state == "STATE_DROP_FACES":
             return
         
@@ -323,11 +358,11 @@ class Game:
         self._update_playing(dt)
 
     def add_hit_stop(self, duration: float):
-        """Freeze game logic briefly for dramatic impact."""
+        """Freeze the game for a brief moment on big hits for dramatic impact."""
         self.hit_stop = max(self.hit_stop, duration)
         
     def _update_playing(self, dt):
-        """Update game logic during play state."""
+        """Main gameplay tick: move players, check collisions, handle bullets, etc."""
         # Hit stop freezes game logic for a moment to emphasize heavy impacts
         if self.hit_stop > 0:
             self.hit_stop -= dt
@@ -438,7 +473,7 @@ class Game:
         self.camera.update(p1_cx, p2_cx, dt)
     
     def check_bullet_collisions(self):
-        """Check bullet collisions with players and barrels."""
+        """Check every bullet/pellet/rocket against both players and the destructible box."""
         
         # Process Explosions first for splash damage
         for bullet in list(self.bullet_group):
@@ -513,7 +548,7 @@ class Game:
                 bullet.alive = False
     
     def _handle_kill(self, victim_id, is_self_death=False):
-        """Handle a player kill: streak logic, respawn timer, win check."""
+        """Called when a player dies. Updates scores, head streaks, and triggers K.O. or game over."""
         victim = self.p1 if victim_id == 1 else self.p2
         killer = self.p2 if victim_id == 1 else self.p1
         
@@ -566,7 +601,7 @@ class Game:
                 return
     
     def _respawn_player(self, player):
-        """Teleport player back to start and make invulnerable."""
+        """Bring a dead player back to life at their start position with brief invulnerability."""
         self.audio_manager.play_sound("respawn")
         player.x = float(player.start_x)
         player.y = float(GROUND_Y - PLAYER_HEIGHT)
@@ -601,7 +636,7 @@ class Game:
         player.update_rect()
     
     def _spawn_shotgun_from_box(self):
-        """Drop a shotgun or bazooka pickup at the box position."""
+        """Drop a random weapon pickup (shotgun or bazooka) where the box was destroyed."""
         
         self.shotgun_group.empty()
         
@@ -615,7 +650,7 @@ class Game:
             print(f"[SHOTGUN] Spawned at ({BOX_X}, {GROUND_Y}) ")
     
     def reset_game(self):
-        """Full match reset."""
+        """Start a fresh match: reset scores, respawn players, clear all projectiles and pickups."""
         # Reset Player 1
         self.p1.x = 320.0
         self.p1.y = float(GROUND_Y - PLAYER_HEIGHT)
@@ -708,7 +743,34 @@ class Game:
         # Camera is handled by update method, no need to reset zoom values
     
     def draw(self):
-        """Draw current game state."""
+        """Render everything to screen based on current game state."""
+        if self.state == "STATE_LOADING":
+            self.screen.fill((0, 0, 0))
+            if self.cap:
+                elapsed = 5.0 - self.loading_timer
+                expected_frame = int(elapsed * self.video_fps)
+                current_frame = int(self.cap.get(cv2.CAP_PROP_POS_FRAMES))
+                
+                frames_to_read = expected_frame - current_frame
+                
+                if frames_to_read > 0:
+                    frame = None
+                    for _ in range(frames_to_read):
+                        ret, f = self.cap.read()
+                        if ret:
+                            frame = f
+                        else:
+                            break
+                            
+                    if frame is not None:
+                        frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+                        frame = cv2.resize(frame, (SCREEN_W, SCREEN_H))
+                        self.current_video_frame = pygame.image.frombuffer(frame.tobytes(), frame.shape[1::-1], "RGB")
+                
+                if self.current_video_frame:
+                    self.screen.blit(self.current_video_frame, (0, 0))
+            return
+
         if self.state == "STATE_MENU":
             self.menu.draw(self.screen)
             return
@@ -770,7 +832,7 @@ class Game:
             self.game_over_menu.draw(self.screen, winner_name)
     
     def _draw_playing(self):
-        """Draw game world to virtual surface, then apply camera to screen."""
+        """Draw the actual gameplay: background, arena, players, bullets, particles, HUD."""
         # Get the virtual surface from the camera
         virtual_surface = self.camera.virtual_surface
         

@@ -1,4 +1,4 @@
-# src/player.py
+# src/player.py — Player character: movement, combat, weapons, collision, and death/respawn.
 
 import pygame
 from src.physics import PhysicsObject
@@ -18,7 +18,9 @@ from src.constants import (
 
 
 class Player(PhysicsObject, pygame.sprite.Sprite):
-    """Player character with combat and movement capabilities."""
+    """A playable character. Handles keyboard/gamepad input, shooting, melee,
+    dashing, weapon pickups, collision with platforms/obstacles, and death/respawn.
+    Inherits physics (gravity, ground collision) from PhysicsObject."""
     
     def __init__(self, player_id: int, start_x: int, controls: dict, assets: dict):
         PhysicsObject.__init__(self, start_x, GROUND_Y - PLAYER_HEIGHT, PLAYER_WIDTH, PLAYER_HEIGHT)
@@ -100,7 +102,7 @@ class Player(PhysicsObject, pygame.sprite.Sprite):
         self.rect.y = int(self.y)
 
     def is_action_pressed(self, action: str, keys) -> bool:
-        """Centralized input check for Keyboard + Gamepad."""
+        """Check if an action key is pressed on either keyboard or gamepad."""
         if action not in self.controls:
             return False
             
@@ -145,7 +147,7 @@ class Player(PhysicsObject, pygame.sprite.Sprite):
         return False
 
     def handle_input(self, keys, dt):
-        """Process player input."""
+        """Read all input and update movement, combat, and dash state for this frame."""
         if not self.alive:
             return
         
@@ -258,7 +260,7 @@ class Player(PhysicsObject, pygame.sprite.Sprite):
         self.update_rect()
     
     def try_shoot(self):
-        """Attempt to fire a bullet."""
+        """Fire a pistol bullet in the facing direction (or aim direction if aiming)."""
         if self.ammo <= 0:
             return
         
@@ -298,7 +300,7 @@ class Player(PhysicsObject, pygame.sprite.Sprite):
             self.audio_manager.play_sound("shoot")
     
     def try_knife(self):
-        """Attempt to perform knife attack."""
+        """Start a melee attack. Damage check happens 100ms later (mid-swing)."""
         if self.knife_cooldown > 0:
             return
         
@@ -312,7 +314,7 @@ class Player(PhysicsObject, pygame.sprite.Sprite):
             self.audio_manager.play_sound("knife_swoosh")
     
     def try_shotgun(self):
-        """Fire a shotgun blast — spread of SHOTGUN_PELLETS pellets."""
+        """Fire shotgun: spawns multiple pellets in a spread pattern. Auto-drops when ammo runs out."""
         from src.constants import (
             SHOTGUN_PELLETS, SHOTGUN_SPREAD_DEG,
             SHOTGUN_COOLDOWN
@@ -381,7 +383,7 @@ class Player(PhysicsObject, pygame.sprite.Sprite):
             self.audio_manager.play_sound("shotgun_fire")
 
     def try_bazooka(self):
-        """Fire the bazooka."""
+        """Fire a rocket. Biggest screen shake, strongest recoil. Auto-drops when ammo runs out."""
 
         if self.bazooka_cooldown > 0 or self.bazooka_ammo <= 0:
             return
@@ -429,7 +431,7 @@ class Player(PhysicsObject, pygame.sprite.Sprite):
             self.audio_manager.play_sound("bazooka_fire")
 
     def update_knife(self, opponent, particle_system, dt):
-        """Update knife cooldown and hit detection."""
+        """Tick weapon cooldowns and check if a knife swing connects with the opponent."""
         if self.knife_cooldown > 0:
             self.knife_cooldown -= dt
         if self.shotgun_cooldown > 0:
@@ -455,7 +457,8 @@ class Player(PhysicsObject, pygame.sprite.Sprite):
                             self.game._handle_kill(opponent.player_id, is_self_death=False)
     
     def take_damage(self, amount: int, hit_pos: tuple, knockback_x: float = 0.0):
-        """Apply damage. Returns True if this hit killed the player."""
+        """Apply damage to this player. Triggers hit-stop, knockback, and death if HP hits 0.
+        Returns True if this hit killed the player."""
         if not self.alive:
             return False
         if self.is_invulnerable:
@@ -495,7 +498,7 @@ class Player(PhysicsObject, pygame.sprite.Sprite):
         self.health = min(self.max_health, self.health + amount)
     
     def die(self, hit_dir=0):
-        """Handle death logic and trigger ragdoll."""
+        """Kill this player: set HP to 0, trigger ragdoll animation in the hit direction."""
         if not self.alive:
             return
         self.health = 0
@@ -534,7 +537,7 @@ class Player(PhysicsObject, pygame.sprite.Sprite):
             self.audio_manager.play_sound("player_death")
     
     def take_cliff_death(self):
-        """Instantly kill player for falling off the cliff edge."""
+        """Instant death from falling off the map edge. Uses a spinning ragdoll."""
         if not self.alive:
             return
         self.health = 0
@@ -553,7 +556,7 @@ class Player(PhysicsObject, pygame.sprite.Sprite):
         return pygame.Rect(int(self.x) + offset, int(self.y) + 10, KNIFE_RANGE, PLAYER_HEIGHT - 20)
     
     def check_platform_collision(self, platforms):
-        """Check and resolve platform collisions (one-way platforms)."""
+        """One-way platform landing: player passes through from below, lands on top when falling."""
         player_rect = self.get_rect()
         # Extend 2px below feet so standing-on-edge still detects overlap
         feet_probe = pygame.Rect(player_rect.x, player_rect.y,
@@ -575,10 +578,7 @@ class Player(PhysicsObject, pygame.sprite.Sprite):
                 break
     
     def check_trampoline_collision(self, clouds):
-        """
-        If player lands on a trampoline cloud,
-        launch them upward with bounce force.
-        """
+        """If the player lands on a bounce cloud, launch them upward."""
         player_rect = self.get_rect()
         for cloud in clouds:
             if not cloud.trampoline:
@@ -619,7 +619,7 @@ class Player(PhysicsObject, pygame.sprite.Sprite):
                 break
     
     def check_barrel_collision(self, barrels):
-        """Check and resolve barrel collisions (solid obstacles)."""
+        """Handle barrel collision: land on top to stand, or get pushed sideways."""
         player_rect = self.get_rect()
         # Extend 2px below feet so standing-on-edge still detects overlap
         feet_probe = pygame.Rect(player_rect.x, player_rect.y,
@@ -669,10 +669,7 @@ class Player(PhysicsObject, pygame.sprite.Sprite):
                 self.update_rect()
     
     def check_single_obstacle_collision(self, obstacle):
-        """
-        Solid collision with any single rect-based obstacle.
-        Same logic as barrel — land on top or push sideways.
-        """
+        """Same as barrel collision but for any single obstacle (like the destructible box)."""
         player_rect = self.get_rect()
         # Extend 2px below feet so standing-on-edge still detects overlap
         feet_probe = pygame.Rect(player_rect.x, player_rect.y,
@@ -724,7 +721,7 @@ class Player(PhysicsObject, pygame.sprite.Sprite):
             self.update_rect()
     
     def check_pickups(self, health_group, ammo_group):
-        """Check and collect pickups."""
+        """Walk over health packs or ammo boxes to collect them."""
         # Update rect before collision check
         self.update_rect()
         
@@ -747,7 +744,7 @@ class Player(PhysicsObject, pygame.sprite.Sprite):
                     self.audio_manager.play_sound("pickup_ammo")
     
     def draw(self, surface, camera):
-        """Draw player body with invuln flicker and materialize effect."""
+        """Draw the player. Handles invulnerability flicker and spawn fade-in effect."""
         if not self.alive:
             # Still draw ragdoll / death animation parts
             self.body.draw(surface, self.x, self.y, self.facing)

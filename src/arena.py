@@ -1,4 +1,5 @@
-# src/arena.py
+# src/arena.py — The game world: ground, platforms, barrel, destructible box, clouds.
+# Loads custom images from assets/ folders when available, falls back to procedural art.
 
 import pygame
 from src.constants import (
@@ -9,17 +10,10 @@ from src.constants import (
 
 def _detect_solid_bounds(image, alpha_threshold=30, edge_inset=6,
                          min_solid_fraction=0.25):
-    """
-    Scan a pygame Surface with per-pixel alpha to find the
-    actual solid content bounds.
-
-    Returns (surface_y_offset, col_left, col_right):
-      surface_y_offset — rows from top until solid content begins
-      col_left         — leftmost solid column (with inset applied)
-      col_right        — rightmost solid column (with inset applied)
-
-    These values are relative to the image top-left (0,0).
-    """
+    """Scan a PNG image to find where the actual visible content is.
+    Used to figure out the real collision area of custom platform/cloud images
+    that might have transparent padding around them.
+    Returns (y_offset_to_solid, left_edge_col, right_edge_col)."""
     w, h = image.get_size()
     if w == 0 or h == 0:
         return 0, 0, w
@@ -79,12 +73,9 @@ def _detect_solid_bounds(image, alpha_threshold=30, edge_inset=6,
     return surface_y_offset, col_left, col_right
 
 def create_cloud_surface(vibrant=False, shape_id=0):
-    """
-    Cartoon cloud matching reference image.
-    Each shape_id (0-6) gives a unique bump arrangement.
-    vibrant=True  -> bright white, trampoline cloud
-    vibrant=False -> muted grey-blue, background only
-    """
+    """Generate a procedural cartoon cloud sprite. 7 unique shapes available.
+    vibrant=True makes it bright white (used for trampoline clouds players can bounce on).
+    vibrant=False makes it grey-blue (background decoration only)."""
     import math
     w, h = 120, 52
     s = pygame.Surface((w, h), pygame.SRCALPHA)
@@ -249,11 +240,9 @@ def create_cloud_surface(vibrant=False, shape_id=0):
 
 
 def load_cloud_images(prefix):
-    """
-    Scan assets/ui/clouds/ for files matching
-    {prefix}_1.png, {prefix}_2.png, etc.
-    Returns list of loaded pygame Surfaces.
-    """
+    """Load custom cloud images from assets/ui/clouds/ matching a naming pattern.
+    e.g. prefix='cloud_bg' loads cloud_bg_1.png, cloud_bg_2.png, etc.
+    Returns a list of (path, Surface) tuples."""
     import os, re
     cloud_dir = "assets/ui/clouds"
     os.makedirs(cloud_dir, exist_ok=True)
@@ -278,12 +267,9 @@ def load_cloud_images(prefix):
 
 
 def load_platform_images():
-    """
-    Scan assets/ui/platforms/ for custom platform images.
-    Name them: platform_1.png platform_2.png etc.
-    They cycle across platforms automatically.
-    Returns list of loaded surfaces or empty list.
-    """
+    """Load custom platform images from assets/ui/platforms/.
+    Name them platform_1.png, platform_2.png, etc. They cycle across platforms.
+    If no files found, procedural platforms are used instead."""
     import os, re
     plat_dir = "assets/ui/platforms"
     os.makedirs(plat_dir, exist_ok=True)
@@ -309,14 +295,9 @@ def load_platform_images():
 
 
 def load_obstacle_images():
-    """
-    Load custom barrel and box images from assets/obstacles/.
-    barrel.png  → used for the single barrel obstacle
-    box.png     → used for the destructible box (intact state)
-    box_cracked.png → optional cracked state (falls back to tinted box)
-    Returns dict: {'barrel': Surface or None, 'box': Surface or None,
-                   'box_cracked': Surface or None}
-    """
+    """Load custom barrel/box sprites from assets/obstacles/.
+    Expects: barrel.png, box.png, and optionally box_cracked.png.
+    Returns a dict with the loaded surfaces (or None if file missing)."""
     import os
     obs_dir = "assets/obstacles"
     os.makedirs(obs_dir, exist_ok=True)
@@ -335,27 +316,10 @@ def load_obstacle_images():
 
 
 class Cloud(pygame.sprite.Sprite):
-    """
-    A cloud object.
-    trampoline=True  → launches player upward on contact
-    trampoline=False → background decoration, no collision
-
-    ════════════════════════════════════════════
-    CUSTOM CLOUD IMAGES
-    ════════════════════════════════════════════
-    Folder:  assets/ui/clouds/
-    Background clouds:
-      cloud_bg_1.png, cloud_bg_2.png, cloud_bg_3.png ...
-    Trampoline clouds:
-      cloud_bounce_1.png, cloud_bounce_2.png ...
-    Formats: PNG or JPG (PNG recommended for transparency)
-    Size:    Any size — auto scaled to fit
-    Usage:   Add as many as you want — they cycle
-             automatically across cloud positions.
-             Restart game after adding files.
-             If no files found, generated clouds are used.
-    ════════════════════════════════════════════
-    """
+    """A cloud in the sky. Two types:
+    - Background clouds (trampoline=False): just decoration, no collision
+    - Trampoline clouds (trampoline=True): players bounce upward when landing on them
+    Custom images go in assets/ui/clouds/ (cloud_bg_*.png or cloud_bounce_*.png)."""
 
     _cloud_index = 0  # class-level counter for cycling
 
@@ -455,7 +419,8 @@ class Cloud(pygame.sprite.Sprite):
 
 
 class Ground:
-    """Ground floor renderer."""
+    """Renders the ground, sky background, clouds, and the ground image.
+    Loads custom images from assets/ui/ if available."""
     
     def __init__(self, tile_image):
         self.tile = tile_image
@@ -568,7 +533,8 @@ class Ground:
             surface.blit(cloud['surf'],
                 (cloud['x'], cloud['y']))
 class Platform(pygame.sprite.Sprite):
-    """One-way platform that players can jump through from below."""
+    """A floating platform players can jump through from below and land on top of.
+    If a custom image is provided, the collision zone is auto-detected from the pixels."""
     
     def __init__(self, x, y, width, height, image, custom_image=None):
         super().__init__()
@@ -677,7 +643,8 @@ class Platform(pygame.sprite.Sprite):
 
 
 class Barrel(pygame.sprite.Sprite):
-    """Static barrel obstacle on the ground with platform behavior."""
+    """An indestructible barrel that sits on the ground. Players can stand on top of it.
+    Uses custom image from assets/obstacles/barrel.png if available."""
     
     def __init__(self, x, y, custom_image=None):
         super().__init__()
@@ -734,12 +701,9 @@ class Barrel(pygame.sprite.Sprite):
 
 
 class DestructibleBox(pygame.sprite.Sprite):
-    """
-    A destructible wooden box obstacle.
-    Takes damage from bullets and knife hits.
-    At 0 HP: bursts open, drops shotgun pickup on ground,
-    then respawns after BOX_RESPAWN_TIME seconds with full HP.
-    """
+    """A wooden crate that takes damage from bullets and melee attacks.
+    When destroyed (HP reaches 0), it drops a weapon pickup and respawns after a timer.
+    Shows a cracked texture at half HP as visual feedback."""
 
     def __init__(self, x, y, custom_image=None, custom_cracked=None):
         super().__init__()
@@ -800,7 +764,7 @@ class DestructibleBox(pygame.sprite.Sprite):
             BOX_HEIGHT)
 
     def _make_box_art(self, w, h, cracked=False):
-        """Generate fallback box art — wooden crate."""
+        """Draw a procedural wooden crate. cracked=True adds red crack lines."""
         s = pygame.Surface((w, h), pygame.SRCALPHA)
         body   = (180, 130, 70)
         dark   = (120,  80, 35)
@@ -917,7 +881,8 @@ class DestructibleBox(pygame.sprite.Sprite):
 
 
 def create_arena(assets):
-    """Create all arena objects (platforms and barrels)."""
+    """Build the entire game world: platforms, barrel, box, clouds.
+    Loads custom images where available and sets up all collision zones."""
     
     import random
 
