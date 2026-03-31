@@ -168,7 +168,8 @@ class Game:
         self.audio_manager.load_music("assets/sounds/bgm_combat.wav")
     
     def _init_menu_video(self):
-        """Open the looping menu background video. Falls back to static image if unavailable."""
+        """Open the looping menu background video. Falls back to static image if unavailable.
+        Preloads the first frame so the menu never shows the placeholder."""
         if cv2 is None:
             return
         try:
@@ -177,6 +178,12 @@ class Game:
                 self.menu_cap = cap
                 fps = cap.get(cv2.CAP_PROP_FPS)
                 self.menu_video_fps = fps if fps > 0 else 30
+                # Preload the very first frame so it's ready before the menu ever draws
+                ret, frame = cap.read()
+                if ret:
+                    frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+                    frame = cv2.resize(frame, (SCREEN_W, SCREEN_H))
+                    self.menu_video_frame = pygame.image.frombuffer(frame.tobytes(), frame.shape[1::-1], "RGB")
             else:
                 cap.release()
         except Exception:
