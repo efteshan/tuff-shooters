@@ -24,7 +24,7 @@ from src.pickups import PickupSpawnManager, ShotgunPickup, BazookaPickup, preloa
 from src.particles import ParticleSystem
 from src.bullet import ShotgunPellet, Rocket, Explosion
 from src.ui import HUD, KOScreen
-from src.menu import MainMenu, PauseMenu, GameOverMenu, SettingsMenu
+from src.menu import MainMenu, PauseMenu, GameOverMenu, SettingsMenu, OnlineMenu
 from src.animation import SkeletalBody
 from src.audio import AudioManager
 
@@ -88,6 +88,8 @@ class Game:
         self.game_over_menu.audio_manager = self.audio_manager
         self.settings_menu = SettingsMenu(self.font_large, self.font_medium)
         self.settings_menu.audio_manager = self.audio_manager
+        self.online_menu = OnlineMenu(self.font_large, self.font_medium)
+        self.online_menu.audio_manager = self.audio_manager
         
         # Custom face surfaces (set via Drop Faces menu)
         self.p1_custom_face = None
@@ -285,10 +287,20 @@ class Game:
                 self.p2_score = 0
                 self.state = "STATE_PLAYING"
                 self.hud.is_paused = False
+            elif action == "online":
+                self.state = "STATE_ONLINE"
             elif action == "settings":
                 # Sync current volume into the slider before opening
                 self.settings_menu.volume = self.audio_manager.get_music_volume()
                 self.state = "STATE_SETTINGS"
+            elif action == "exit":
+                # Cleanly quit the game
+                pygame.event.post(pygame.event.Event(pygame.QUIT))
+        
+        elif self.state == "STATE_ONLINE":
+            action = self.online_menu.handle_event(event)
+            if action == "done":
+                self.state = "STATE_MENU"
         
         elif self.state == "STATE_SETTINGS":
             action = self.settings_menu.handle_event(event)
@@ -362,8 +374,8 @@ class Game:
                 self.state = "STATE_MENU"
             return
             
-        if self.state == "STATE_MENU" or self.state == "STATE_SETTINGS":
-            # Keep advancing the background video while on menu/settings
+        if self.state in ("STATE_MENU", "STATE_SETTINGS", "STATE_ONLINE"):
+            # Keep advancing the background video while on menu/settings/online
             self._advance_menu_video(dt)
             return
         
@@ -837,6 +849,10 @@ class Game:
         
         if self.state == "STATE_SETTINGS":
             self.settings_menu.draw(self.screen, video_frame=self.menu_video_frame, bg_image=self.menu_bg)
+            return
+        
+        if self.state == "STATE_ONLINE":
+            self.online_menu.draw(self.screen, video_frame=self.menu_video_frame, bg_image=self.menu_bg)
             return
         
         # Draw game (for PLAYING, PAUSED, and KO states)

@@ -6,7 +6,7 @@ from src.constants import SCREEN_W, SCREEN_H
 
 
 class MainMenu:
-    """Title screen with Play, Head War, and Settings buttons.
+    """Title screen with Play, Head War, Online, Settings, and Exit buttons.
     Background is a video frame passed in each draw call instead of a static image.
     Buttons use custom PNG images with normal/hover states for an animated feel."""
     
@@ -16,10 +16,18 @@ class MainMenu:
         self.font_medium = font_medium
         self.audio_manager = None
         
-        # Button positions — stacked vertically in the center of screen
-        self.play_rect = pygame.Rect(SCREEN_W//2 - 100, SCREEN_H//2 - 100, 200, 60)
-        self.headwar_rect = pygame.Rect(SCREEN_W//2 - 100, SCREEN_H//2 - 28, 200, 60)
-        self.settings_rect = pygame.Rect(SCREEN_W//2 - 100, SCREEN_H//2 + 44, 200, 48)
+        # Button layout — 5 buttons stacked vertically, bigger size (230x70)
+        btn_w, btn_h = 230, 70
+        gap = 12  # vertical gap between buttons
+        total_h = 5 * btn_h + 4 * gap
+        start_y = SCREEN_H // 2 - total_h // 2
+        cx = SCREEN_W // 2 - btn_w // 2
+        
+        self.play_rect = pygame.Rect(cx, start_y, btn_w, btn_h)
+        self.headwar_rect = pygame.Rect(cx, start_y + (btn_h + gap), btn_w, btn_h)
+        self.online_rect = pygame.Rect(cx, start_y + 2 * (btn_h + gap), btn_w, btn_h)
+        self.settings_rect = pygame.Rect(cx, start_y + 3 * (btn_h + gap), btn_w, btn_h)
+        self.exit_rect = pygame.Rect(cx, start_y + 4 * (btn_h + gap), btn_w, btn_h)
         
         # Load custom button images (normal + hover for each)
         self.play_imgs = self._load_button_pair(
@@ -32,10 +40,20 @@ class MainMenu:
             "assets/ui/buttons/headwar_hover.png",
             self.headwar_rect
         )
+        self.online_imgs = self._load_button_pair(
+            "assets/ui/buttons/online.png",
+            "assets/ui/buttons/online_hover.png",
+            self.online_rect
+        )
         self.settings_imgs = self._load_button_pair(
             "assets/ui/buttons/settings.png",
             "assets/ui/buttons/settings_hover.png",
             self.settings_rect
+        )
+        self.exit_imgs = self._load_button_pair(
+            "assets/ui/buttons/exit.png",
+            "assets/ui/buttons/exit_hover.png",
+            self.exit_rect
         )
     
     def _load_button_pair(self, normal_path, hover_path, target_rect):
@@ -54,9 +72,11 @@ class MainMenu:
             
             # Update the button rect to match the actual scaled image size (centered at same position)
             new_w, new_h = normal_scaled.get_size()
+            old_centery = target_rect.centery
             target_rect.width = new_w
             target_rect.height = new_h
             target_rect.centerx = SCREEN_W // 2
+            target_rect.centery = old_centery
             
             return (normal_scaled, hover_scaled)
         except Exception:
@@ -81,10 +101,18 @@ class MainMenu:
                 if self.audio_manager:
                     self.audio_manager.play_sound("menu_click")
                 return "head_war"
+            if self.online_rect.collidepoint(event.pos):
+                if self.audio_manager:
+                    self.audio_manager.play_sound("menu_click")
+                return "online"
             if self.settings_rect.collidepoint(event.pos):
                 if self.audio_manager:
                     self.audio_manager.play_sound("menu_click")
                 return "settings"
+            if self.exit_rect.collidepoint(event.pos):
+                if self.audio_manager:
+                    self.audio_manager.play_sound("menu_click")
+                return "exit"
         return None
     
     def draw(self, screen, video_frame=None):
@@ -94,10 +122,6 @@ class MainMenu:
         else:
             screen.blit(self.bg, (0, 0))
         
-        # Game title text
-        title = self.font_large.render("tuff shooters", True, (255, 220, 50))
-        screen.blit(title, title.get_rect(centerx=SCREEN_W//2, y=180))
-        
         mouse_pos = pygame.mouse.get_pos()
         
         # Draw each button — custom image if loaded, fallback to colored rect if not
@@ -105,8 +129,12 @@ class MainMenu:
                           "PLAY", (80, 200, 80), (50, 150, 50), (255, 255, 255), 3)
         self._draw_button(screen, mouse_pos, self.headwar_rect, self.headwar_imgs,
                           "HEAD WAR", (220, 90, 40), (180, 60, 25), (255, 200, 100), 3)
+        self._draw_button(screen, mouse_pos, self.online_rect, self.online_imgs,
+                          "ONLINE", (60, 120, 220), (40, 80, 170), (150, 200, 255), 3)
         self._draw_button(screen, mouse_pos, self.settings_rect, self.settings_imgs,
-                          "Settings", (185, 145, 65), (148, 108, 42), (255, 220, 150), 2)
+                          "SETTINGS", (185, 145, 65), (148, 108, 42), (255, 220, 150), 2)
+        self._draw_button(screen, mouse_pos, self.exit_rect, self.exit_imgs,
+                          "EXIT", (180, 50, 50), (140, 35, 35), (255, 150, 150), 2)
     
     def _draw_button(self, screen, mouse_pos, rect, imgs, fallback_text,
                      hover_color, normal_color, border_color, border_width):
@@ -566,6 +594,82 @@ class SettingsMenu:
             sx = (minus_r.right + plus_r.left) // 2
             sy = minus_r.centery
             screen.blit(sv, sv.get_rect(center=(sx, sy)))
+
+
+class OnlineMenu:
+    """Popup overlay that shows a 'coming soon' message when the player clicks Online.
+    Has a dark background overlay and a close (X) button to return to the main menu."""
+    
+    def __init__(self, font_large, font_medium):
+        self.font_large = font_large
+        self.font_medium = font_medium
+        self.audio_manager = None
+        
+        # Centered panel
+        pw, ph = 500, 260
+        self.panel_rect = pygame.Rect(SCREEN_W//2 - pw//2, SCREEN_H//2 - ph//2, pw, ph)
+        px, py = self.panel_rect.x, self.panel_rect.y
+        
+        # Close (X) button — top right corner
+        close_size = 32
+        self.close_rect = pygame.Rect(px + pw - close_size - 10, py + 10, close_size, close_size)
+        
+        # Pre-build the dark overlay
+        self._overlay = pygame.Surface((SCREEN_W, SCREEN_H), pygame.SRCALPHA)
+        self._overlay.fill((0, 0, 0, 180))
+        
+        self._font_btn = pygame.font.Font(None, 28)
+        self._font_msg = pygame.font.Font(None, 38)
+        
+        # ============================================================
+        # CHANGE THIS TEXT to update the Online popup description.
+        # Just edit the string below to whatever you want it to say.
+        # ============================================================
+        self.message = "the online is coming soon"
+    
+    def handle_event(self, event) -> str:
+        """Returns 'done' when close is clicked, otherwise None."""
+        if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+            if self.close_rect.collidepoint(event.pos):
+                if self.audio_manager:
+                    self.audio_manager.play_sound("menu_click")
+                return "done"
+        if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
+            return "done"
+        return None
+    
+    def draw(self, screen, video_frame=None, bg_image=None):
+        """Draw the Online popup over the darkened background."""
+        # Draw the background (video or static)
+        if video_frame is not None:
+            screen.blit(video_frame, (0, 0))
+        elif bg_image is not None:
+            screen.blit(bg_image, (0, 0))
+        
+        # Dark overlay
+        screen.blit(self._overlay, (0, 0))
+        
+        # Panel card
+        pygame.draw.rect(screen, (30, 30, 45), self.panel_rect, border_radius=16)
+        pygame.draw.rect(screen, (80, 120, 200), self.panel_rect, 3, border_radius=16)
+        
+        # Title
+        title = self.font_large.render("ONLINE", True, (100, 180, 255))
+        screen.blit(title, title.get_rect(centerx=SCREEN_W//2, y=self.panel_rect.y + 20))
+        
+        mouse = pygame.mouse.get_pos()
+        
+        # Close (X) button
+        hover_close = self.close_rect.collidepoint(mouse)
+        close_color = (200, 60, 60) if hover_close else (120, 50, 50)
+        pygame.draw.rect(screen, close_color, self.close_rect, border_radius=6)
+        pygame.draw.rect(screen, (220, 180, 180), self.close_rect, 2, border_radius=6)
+        x_text = self._font_btn.render("X", True, (255, 255, 255))
+        screen.blit(x_text, x_text.get_rect(center=self.close_rect.center))
+        
+        # Message text — centered in the panel
+        msg = self._font_msg.render(self.message, True, (220, 220, 240))
+        screen.blit(msg, msg.get_rect(center=self.panel_rect.center))
 
 
 # Legacy alias so existing imports don't break
