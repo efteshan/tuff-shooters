@@ -37,6 +37,15 @@ class AudioManager:
             except Exception:
                 pass
 
+    def set_music_volume(self, volume):
+        """Set music volume. volume is a float from 0.0 (mute) to 1.0 (full)."""
+        vol = max(0.0, min(1.0, volume))
+        pygame.mixer.music.set_volume(vol)
+
+    def get_music_volume(self):
+        """Return the current music volume (0.0 – 1.0)."""
+        return pygame.mixer.music.get_volume()
+
     def stop_music(self):
         """Stop whatever music is currently playing."""
         pygame.mixer.music.stop()

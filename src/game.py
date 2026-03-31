@@ -24,7 +24,7 @@ from src.pickups import PickupSpawnManager, ShotgunPickup, BazookaPickup, preloa
 from src.particles import ParticleSystem
 from src.bullet import ShotgunPellet, Rocket, Explosion
 from src.ui import HUD, KOScreen
-from src.menu import MainMenu, PauseMenu, GameOverMenu, DropFacesMenu
+from src.menu import MainMenu, PauseMenu, GameOverMenu, SettingsMenu
 from src.animation import SkeletalBody
 from src.audio import AudioManager
 
@@ -52,6 +52,13 @@ class Game:
                         self.video_fps = 30
             except Exception:
                 self.cap = None
+        
+        # Looping menu background video
+        self.menu_cap = None
+        self.menu_video_fps = 30
+        self.menu_video_frame = None
+        self._menu_frame_timer = 0.0
+        self._init_menu_video()
         self.hit_stop = 0.0  # added for screen freeze on big hits
         self.head_war_mode = False  # True = head-streak + respawn, False = normal rounds
         self.ko_winner_id = 0  # 1 or 2 — which player won
@@ -79,8 +86,8 @@ class Game:
         self.pause_menu.audio_manager = self.audio_manager
         self.game_over_menu = GameOverMenu(self.font_large, self.font_medium)
         self.game_over_menu.audio_manager = self.audio_manager
-        self.drop_faces_menu = DropFacesMenu(self.font_large, self.font_medium)
-        self.drop_faces_menu.audio_manager = self.audio_manager
+        self.settings_menu = SettingsMenu(self.font_large, self.font_medium)
+        self.settings_menu.audio_manager = self.audio_manager
         
         # Custom face surfaces (set via Drop Faces menu)
         self.p1_custom_face = None
@@ -159,7 +166,49 @@ class Game:
         self.audio_manager.load_sound("game_over", "assets/sounds/game_over.wav")
         self.audio_manager.load_sound("explosion", "assets/sounds/explosion.wav")
         self.audio_manager.load_music("assets/sounds/bgm_combat.wav")
+    
+    def _init_menu_video(self):
+        """Open the looping menu background video. Falls back to static image if unavailable."""
+        if cv2 is None:
+            return
+        try:
+            cap = cv2.VideoCapture("assets/menu_bg.mp4")
+            if cap.isOpened():
+                self.menu_cap = cap
+                fps = cap.get(cv2.CAP_PROP_FPS)
+                self.menu_video_fps = fps if fps > 0 else 30
+            else:
+                cap.release()
+        except Exception:
+            pass
 
+    def _advance_menu_video(self, dt):
+        """Read the next video frame when enough time has passed. Loops automatically."""
+        if self.menu_cap is None:
+            return
+        self._menu_frame_timer += dt
+        frame_interval = 1.0 / self.menu_video_fps
+        if self._menu_frame_timer < frame_interval:
+            return
+        # Consume accumulated time (read multiple frames if lagging)
+        frames_to_read = int(self._menu_frame_timer / frame_interval)
+        self._menu_frame_timer -= frames_to_read * frame_interval
+        frame = None
+        for _ in range(frames_to_read):
+            ret, f = self.menu_cap.read()
+            if ret:
+                frame = f
+            else:
+                # End of video — loop back to the start
+                self.menu_cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
+                ret, f = self.menu_cap.read()
+                if ret:
+                    frame = f
+                break
+        if frame is not None:
+            frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+            frame = cv2.resize(frame, (SCREEN_W, SCREEN_H))
+            self.menu_video_frame = pygame.image.frombuffer(frame.tobytes(), frame.shape[1::-1], "RGB")
     
     def _load_assets(self):
         """Load all sprite images and build the asset dicts used by players and the arena."""
@@ -229,17 +278,19 @@ class Game:
                 self.p2_score = 0
                 self.state = "STATE_PLAYING"
                 self.hud.is_paused = False
-            elif action == "drop_faces":
-                self.state = "STATE_DROP_FACES"
+            elif action == "settings":
+                # Sync current volume into the slider before opening
+                self.settings_menu.volume = self.audio_manager.get_music_volume()
+                self.state = "STATE_SETTINGS"
         
-        elif self.state == "STATE_DROP_FACES":
-            action = self.drop_faces_menu.handle_event(event)
+        elif self.state == "STATE_SETTINGS":
+            action = self.settings_menu.handle_event(event)
             if action == "done":
                 # Store chosen faces and head base scales
-                self.p1_custom_face = self.drop_faces_menu.p1_face
-                self.p2_custom_face = self.drop_faces_menu.p2_face
-                self.p1_head_base = self.drop_faces_menu.p1_head_base
-                self.p2_head_base = self.drop_faces_menu.p2_head_base
+                self.p1_custom_face = self.settings_menu.p1_face
+                self.p2_custom_face = self.settings_menu.p2_face
+                self.p1_head_base = self.settings_menu.p1_head_base
+                self.p2_head_base = self.settings_menu.p2_head_base
                 self.state = "STATE_MENU"
         
         elif self.state == "STATE_PLAYING":
@@ -304,7 +355,9 @@ class Game:
                 self.state = "STATE_MENU"
             return
             
-        if self.state == "STATE_MENU" or self.state == "STATE_DROP_FACES":
+        if self.state == "STATE_MENU" or self.state == "STATE_SETTINGS":
+            # Keep advancing the background video while on menu/settings
+            self._advance_menu_video(dt)
             return
         
         if self.state == "STATE_PAUSED" or self.state == "STATE_GAME_OVER":
@@ -772,11 +825,11 @@ class Game:
             return
 
         if self.state == "STATE_MENU":
-            self.menu.draw(self.screen)
+            self.menu.draw(self.screen, video_frame=self.menu_video_frame)
             return
         
-        if self.state == "STATE_DROP_FACES":
-            self.drop_faces_menu.draw(self.screen, self.menu_bg)
+        if self.state == "STATE_SETTINGS":
+            self.settings_menu.draw(self.screen, video_frame=self.menu_video_frame, bg_image=self.menu_bg)
             return
         
         # Draw game (for PLAYING, PAUSED, and KO states)

@@ -1,4 +1,4 @@
-# src/menu.py — All menu screens: main menu, pause menu, game over menu, and face customization.
+# src/menu.py — All menu screens: main menu, pause menu, game over menu, and settings.
 
 import pygame
 import os
@@ -6,10 +6,11 @@ from src.constants import SCREEN_W, SCREEN_H
 
 
 class MainMenu:
-    """Title screen with Play, Head War, and Drop Faces buttons."""
+    """Title screen with Play, Head War, and Settings buttons.
+    Background is a video frame passed in each draw call instead of a static image."""
     
     def __init__(self, bg_image, font_large, font_medium):
-        self.bg = bg_image
+        self.bg = bg_image  # fallback static image when video is unavailable
         self.font_large = font_large
         self.font_medium = font_medium
         self.audio_manager = None
@@ -17,7 +18,7 @@ class MainMenu:
         # Button positions — stacked vertically in the center of screen
         self.play_rect = pygame.Rect(SCREEN_W//2 - 100, SCREEN_H//2 - 100, 200, 60)
         self.headwar_rect = pygame.Rect(SCREEN_W//2 - 100, SCREEN_H//2 - 28, 200, 60)
-        self.faces_rect = pygame.Rect(SCREEN_W//2 - 100, SCREEN_H//2 + 44, 200, 48)
+        self.settings_rect = pygame.Rect(SCREEN_W//2 - 100, SCREEN_H//2 + 44, 200, 48)
     
     def handle_event(self, event) -> str:
         """Check if a menu button was clicked. Returns the button name or None."""
@@ -30,14 +31,18 @@ class MainMenu:
                 if self.audio_manager:
                     self.audio_manager.play_sound("menu_click")
                 return "head_war"
-            if self.faces_rect.collidepoint(event.pos):
+            if self.settings_rect.collidepoint(event.pos):
                 if self.audio_manager:
                     self.audio_manager.play_sound("menu_click")
-                return "drop_faces"
+                return "settings"
         return None
     
-    def draw(self, screen):
-        screen.blit(self.bg, (0, 0))
+    def draw(self, screen, video_frame=None):
+        # Draw the video frame if available, otherwise fall back to the static bg image
+        if video_frame is not None:
+            screen.blit(video_frame, (0, 0))
+        else:
+            screen.blit(self.bg, (0, 0))
         
         # Game title text
         title = self.font_large.render("tuff shooters", True, (255, 220, 50))
@@ -45,7 +50,7 @@ class MainMenu:
         
         mouse_pos = pygame.mouse.get_pos()
         
-        # Each button lights up on hover
+        # Play button — green glow on hover
         hover = self.play_rect.collidepoint(mouse_pos)
         btn_color = (80, 200, 80) if hover else (50, 150, 50)
         pygame.draw.rect(screen, btn_color, self.play_rect, border_radius=12)
@@ -53,6 +58,7 @@ class MainMenu:
         play_text = self.font_medium.render("PLAY", True, (255, 255, 255))
         screen.blit(play_text, play_text.get_rect(center=self.play_rect.center))
         
+        # Head War button — orange glow on hover
         hover_hw = self.headwar_rect.collidepoint(mouse_pos)
         hw_color = (220, 90, 40) if hover_hw else (180, 60, 25)
         pygame.draw.rect(screen, hw_color, self.headwar_rect, border_radius=12)
@@ -60,12 +66,13 @@ class MainMenu:
         hw_text = self.font_medium.render("HEAD WAR", True, (255, 240, 200))
         screen.blit(hw_text, hw_text.get_rect(center=self.headwar_rect.center))
         
-        hover2 = self.faces_rect.collidepoint(mouse_pos)
-        btn2_color = (185, 145, 65) if hover2 else (148, 108, 42)
-        pygame.draw.rect(screen, btn2_color, self.faces_rect, border_radius=12)
-        pygame.draw.rect(screen, (255, 220, 150), self.faces_rect, 2, border_radius=12)
-        faces_text = self.font_medium.render("Drop Faces", True, (255, 255, 240))
-        screen.blit(faces_text, faces_text.get_rect(center=self.faces_rect.center))
+        # Settings button — warm brown glow on hover
+        hover_s = self.settings_rect.collidepoint(mouse_pos)
+        btn_s_color = (185, 145, 65) if hover_s else (148, 108, 42)
+        pygame.draw.rect(screen, btn_s_color, self.settings_rect, border_radius=12)
+        pygame.draw.rect(screen, (255, 220, 150), self.settings_rect, 2, border_radius=12)
+        settings_text = self.font_medium.render("Settings", True, (255, 255, 240))
+        screen.blit(settings_text, settings_text.get_rect(center=self.settings_rect.center))
 
 
 class PauseMenu:
@@ -193,24 +200,41 @@ class GameOverMenu:
             screen.blit(text, text.get_rect(center=rect.center))
 
 
-class DropFacesMenu:
-    """Lets players pick custom face images from their computer.
-    Each player gets a drop zone — click to open a file picker, and the selected
-    image becomes that player's head in-game. Also has +/- buttons to resize heads."""
+class SettingsMenu:
+    """Settings popup that overlays the menu. Contains:
+    1. A close (X) button at the top right
+    2. A background music volume slider
+    3. The Drop Faces interface (face upload boxes + head size controls)"""
     
     def __init__(self, font_large, font_medium):
         self.font_large = font_large
         self.font_medium = font_medium
         self.audio_manager = None
         
-        # Main panel centered on screen
-        pw, ph = 620, 420
+        # Main panel centered on screen — taller to fit both settings and drop faces
+        pw, ph = 620, 520
         self.panel_rect = pygame.Rect(SCREEN_W//2 - pw//2, SCREEN_H//2 - ph//2, pw, ph)
         px, py = self.panel_rect.x, self.panel_rect.y
         
+        # Close (X) button — top right corner of panel
+        close_size = 32
+        self.close_rect = pygame.Rect(px + pw - close_size - 10, py + 10, close_size, close_size)
+        
+        # ── Volume slider ──
+        slider_w = 360
+        slider_h = 8
+        slider_y = py + 80
+        self.slider_track = pygame.Rect(SCREEN_W//2 - slider_w//2, slider_y, slider_w, slider_h)
+        self.volume = 1.0  # 0.0 – 1.0
+        self.slider_knob_radius = 10
+        self.dragging_slider = False
+        
+        # ── Drop Faces section ──
+        faces_top = slider_y + 60  # start below the slider
+        
         # Face preview boxes (P1 left, P2 right)
         box_size = 100
-        box_y = py + 110
+        box_y = faces_top + 50
         
         p1_cx = px + pw//4
         self.p1_box = pygame.Rect(p1_cx - box_size//2, box_y, box_size, box_size)
@@ -228,9 +252,6 @@ class DropFacesMenu:
         self.p2_minus = pygame.Rect(p2_cx - 48, size_y, btn_w, btn_h)
         self.p2_plus = pygame.Rect(p2_cx + 20, size_y, btn_w, btn_h)
         
-        # Confirm button at the bottom
-        self.btn_go = pygame.Rect(SCREEN_W//2 - 90, py + ph - 62, 180, 50)
-        
         # The actual face images (None = no custom face selected)
         self.p1_face = None
         self.p2_face = None
@@ -246,6 +267,7 @@ class DropFacesMenu:
         self._font_plus = pygame.font.Font(None, 72)
         self._font_small = pygame.font.Font(None, 22)
         self._font_btn = pygame.font.Font(None, 28)
+        self._font_section = pygame.font.Font(None, 32)
     
     def _open_file_dialog(self):
         """Open a native Windows file picker. Returns a scaled pygame Surface or None."""
@@ -271,10 +293,36 @@ class DropFacesMenu:
             pass
         return None
     
+    def _get_knob_x(self):
+        """Calculate the X position of the volume slider knob."""
+        return self.slider_track.x + int(self.volume * self.slider_track.width)
+    
+    def _knob_rect(self):
+        """Get the clickable rectangle for the slider knob."""
+        kx = self._get_knob_x()
+        ky = self.slider_track.centery
+        r = self.slider_knob_radius
+        return pygame.Rect(kx - r, ky - r, r * 2, r * 2)
+    
     def handle_event(self, event) -> str:
-        """Handle clicks on face boxes, remove buttons, size buttons, and confirm.
-        Returns 'done' when the player confirms, otherwise None."""
+        """Handle clicks on close button, volume slider, face boxes, remove/size buttons.
+        Returns 'done' when the player closes the panel, otherwise None."""
+        
         if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+            # Close button
+            if self.close_rect.collidepoint(event.pos):
+                if self.audio_manager:
+                    self.audio_manager.play_sound("menu_click")
+                return "done"
+            
+            # Volume slider — start dragging if clicked on knob or track
+            knob = self._knob_rect()
+            if knob.collidepoint(event.pos) or self.slider_track.collidepoint(event.pos):
+                self.dragging_slider = True
+                self._update_slider_from_mouse(event.pos[0])
+                return None
+            
+            # Face upload boxes
             if self.p1_box.collidepoint(event.pos):
                 if self.audio_manager:
                     self.audio_manager.play_sound("menu_click")
@@ -291,6 +339,7 @@ class DropFacesMenu:
                     self.p2_face = face
                 return None
             
+            # Remove buttons
             if self.p1_remove.collidepoint(event.pos) and self.p1_face is not None:
                 if self.audio_manager:
                     self.audio_manager.play_sound("menu_click")
@@ -316,34 +365,95 @@ class DropFacesMenu:
             if self.p2_plus.collidepoint(event.pos):
                 self.p2_head_base = min(2.0, round(self.p2_head_base + 0.1, 1))
                 return None
-            
-            if self.btn_go.collidepoint(event.pos):
-                if self.audio_manager:
-                    self.audio_manager.play_sound("menu_click")
-                return "done"
         
+        # Dragging the slider knob
+        if event.type == pygame.MOUSEMOTION and self.dragging_slider:
+            self._update_slider_from_mouse(event.pos[0])
+            return None
+        
+        # Release the slider knob
+        if event.type == pygame.MOUSEBUTTONUP and event.button == 1:
+            if self.dragging_slider:
+                self.dragging_slider = False
+                return None
+        
+        # Escape key closes the settings
         if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
             return "done"
         
         return None
     
-    def draw(self, screen, bg_image):
-        screen.blit(bg_image, (0, 0))
+    def _update_slider_from_mouse(self, mouse_x):
+        """Recalculate volume from mouse X position on the slider track."""
+        rel = mouse_x - self.slider_track.x
+        self.volume = max(0.0, min(1.0, rel / self.slider_track.width))
+        # Apply volume immediately
+        if self.audio_manager:
+            self.audio_manager.set_music_volume(self.volume)
+    
+    def draw(self, screen, video_frame=None, bg_image=None):
+        """Draw the settings popup over the darkened background.
+        video_frame: the current looping video frame (preferred).
+        bg_image: static fallback background."""
+        
+        # Draw the background (video or static)
+        if video_frame is not None:
+            screen.blit(video_frame, (0, 0))
+        elif bg_image is not None:
+            screen.blit(bg_image, (0, 0))
+        
+        # Dark overlay to dim the background
         screen.blit(self._overlay, (0, 0))
         
         # Panel card
         pygame.draw.rect(screen, (35, 30, 25), self.panel_rect, border_radius=16)
         pygame.draw.rect(screen, (180, 140, 60), self.panel_rect, 3, border_radius=16)
         
-        title = self.font_large.render("DROP FACES", True, (255, 210, 80))
-        screen.blit(title, title.get_rect(centerx=SCREEN_W//2, y=self.panel_rect.y + 20))
-        
-        sub = self._font_small.render("Click a box to select a custom face image", True, (180, 170, 150))
-        screen.blit(sub, sub.get_rect(centerx=SCREEN_W//2, y=self.panel_rect.y + 78))
+        # Title
+        title = self.font_large.render("SETTINGS", True, (255, 210, 80))
+        screen.blit(title, title.get_rect(centerx=SCREEN_W//2, y=self.panel_rect.y + 16))
         
         mouse = pygame.mouse.get_pos()
         
-        # Draw both player face zones (P1 = blue, P2 = red)
+        # ── Close (X) button ──
+        hover_close = self.close_rect.collidepoint(mouse)
+        close_color = (200, 60, 60) if hover_close else (120, 50, 50)
+        pygame.draw.rect(screen, close_color, self.close_rect, border_radius=6)
+        pygame.draw.rect(screen, (220, 180, 180), self.close_rect, 2, border_radius=6)
+        x_text = self._font_btn.render("X", True, (255, 255, 255))
+        screen.blit(x_text, x_text.get_rect(center=self.close_rect.center))
+        
+        # ── Volume Slider ──
+        vol_label = self._font_section.render("Background Volume", True, (220, 200, 160))
+        screen.blit(vol_label, vol_label.get_rect(centerx=SCREEN_W//2, bottom=self.slider_track.y - 8))
+        
+        # Track background (dark bar)
+        pygame.draw.rect(screen, (60, 55, 45), self.slider_track, border_radius=4)
+        # Filled portion (golden)
+        filled_w = int(self.volume * self.slider_track.width)
+        if filled_w > 0:
+            filled_rect = pygame.Rect(self.slider_track.x, self.slider_track.y, filled_w, self.slider_track.height)
+            pygame.draw.rect(screen, (220, 180, 60), filled_rect, border_radius=4)
+        # Knob
+        kx = self._get_knob_x()
+        ky = self.slider_track.centery
+        knob_color = (255, 220, 100) if self.dragging_slider else (200, 170, 80)
+        pygame.draw.circle(screen, knob_color, (kx, ky), self.slider_knob_radius)
+        pygame.draw.circle(screen, (255, 240, 180), (kx, ky), self.slider_knob_radius, 2)
+        
+        # Volume percentage text
+        vol_pct = self._font_small.render(f"{int(self.volume * 100)}%", True, (180, 170, 150))
+        screen.blit(vol_pct, vol_pct.get_rect(centerx=SCREEN_W//2, top=self.slider_track.bottom + 6))
+        
+        # ── Drop Faces section title ──
+        faces_title_y = self.slider_track.bottom + 32
+        df_title = self._font_section.render("Drop Faces", True, (255, 210, 80))
+        screen.blit(df_title, df_title.get_rect(centerx=SCREEN_W//2, y=faces_title_y))
+        
+        sub = self._font_small.render("Click a box to select a custom face image", True, (180, 170, 150))
+        screen.blit(sub, sub.get_rect(centerx=SCREEN_W//2, y=faces_title_y + 28))
+        
+        # ── Player face zones ──
         for label, box, face, remove_rect, color in [
             ("P1", self.p1_box, self.p1_face, self.p1_remove, (60, 120, 220)),
             ("P2", self.p2_box, self.p2_face, self.p2_remove, (220, 60, 60)),
@@ -380,7 +490,7 @@ class DropFacesMenu:
                 rm_text = self._font_small.render("Remove", True, (255, 220, 220))
                 screen.blit(rm_text, rm_text.get_rect(center=remove_rect.center))
         
-        # Head size +/- controls for each player
+        # ── Head size +/- controls ──
         for minus_r, plus_r, scale_val in [
             (self.p1_minus, self.p1_plus, self.p1_head_base),
             (self.p2_minus, self.p2_plus, self.p2_head_base),
@@ -404,11 +514,7 @@ class DropFacesMenu:
             sx = (minus_r.right + plus_r.left) // 2
             sy = minus_r.centery
             screen.blit(sv, sv.get_rect(center=(sx, sy)))
-        
-        # Confirm button
-        hover_go = self.btn_go.collidepoint(mouse)
-        go_color = (80, 200, 80) if hover_go else (50, 150, 50)
-        pygame.draw.rect(screen, go_color, self.btn_go, border_radius=12)
-        pygame.draw.rect(screen, (200, 255, 200), self.btn_go, 2, border_radius=12)
-        go_text = self.font_medium.render("Let's Go!!", True, (255, 255, 255))
-        screen.blit(go_text, go_text.get_rect(center=self.btn_go.center))
+
+
+# Legacy alias so existing imports don't break
+DropFacesMenu = SettingsMenu
