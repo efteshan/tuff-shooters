@@ -3,8 +3,6 @@
 import pygame
 import os
 from src.constants import SCREEN_W, SCREEN_H
-
-
 class MainMenu:
     """Title screen with Play, Head War, Online, Settings, and Exit buttons.
     Background is a video frame passed in each draw call instead of a static image.
@@ -16,7 +14,45 @@ class MainMenu:
         self.font_medium = font_medium
         self.audio_manager = None
         
-        # Button layout — 5 buttons stacked vertically, bigger size (230x70)
+        # ================================================================
+        # BUTTON SIZE CONFIGURATION
+        # Change these values to manually scale each button image.
+        # 1.0 = default size, 1.2 = 20% bigger, 0.8 = 20% smaller, etc.
+        # "normal" = when mouse is NOT hovering, "hover" = when mouse IS hovering.
+        # Images are always scaled from the ORIGINAL high-res file, so
+        # quality stays crisp at any size.
+        # ================================================================
+        self.play_scale_normal     = 1.4
+        self.play_scale_hover      = 1.35
+        self.headwar_scale_normal  = 1.3
+        self.headwar_scale_hover   = 1.25
+        self.online_scale_normal   = 1.2
+        self.online_scale_hover    = 1.15
+        self.settings_scale_normal = 1.1
+        self.settings_scale_hover  = 1.05
+        self.exit_scale_normal     = 1.0
+        self.exit_scale_hover      = 0.95
+        # ================================================================
+        
+        # ================================================================
+        # BUTTON POSITION OFFSETS
+        # Shift each button from its default grid position (in pixels).
+        # Positive X = move right, Negative X = move left.
+        # Positive Y = move down,  Negative Y = move up.
+        # ================================================================
+        self.play_offset_x     = -32
+        self.play_offset_y     = -2
+        self.headwar_offset_x  = 66
+        self.headwar_offset_y  = 14
+        self.online_offset_x   = -34
+        self.online_offset_y   = 26
+        self.settings_offset_x = 62
+        self.settings_offset_y = 28
+        self.exit_offset_x     = -15
+        self.exit_offset_y     = 27
+        # ================================================================
+        
+        # Button layout — 5 buttons stacked vertically, base size (230x70)
         btn_w, btn_h = 230, 70
         gap = 12  # vertical gap between buttons
         total_h = 5 * btn_h + 4 * gap
@@ -29,7 +65,8 @@ class MainMenu:
         self.settings_rect = pygame.Rect(cx, start_y + 3 * (btn_h + gap), btn_w, btn_h)
         self.exit_rect = pygame.Rect(cx, start_y + 4 * (btn_h + gap), btn_w, btn_h)
         
-        # Load custom button images (normal + hover for each)
+        # Load custom button images — stores (raw_normal, raw_hover, base_w, base_h)
+        # Raw images are kept at FULL RESOLUTION so scaling is always crisp.
         self.play_imgs = self._load_button_pair(
             "assets/ui/buttons/play.png",
             "assets/ui/buttons/play_hover.png",
@@ -55,40 +92,59 @@ class MainMenu:
             "assets/ui/buttons/exit_hover.png",
             self.exit_rect
         )
+        
+        # Apply position offsets to collision rects (moves both visual + hitbox together)
+        self.play_rect.x += self.play_offset_x
+        self.play_rect.y += self.play_offset_y
+        self.headwar_rect.x += self.headwar_offset_x
+        self.headwar_rect.y += self.headwar_offset_y
+        self.online_rect.x += self.online_offset_x
+        self.online_rect.y += self.online_offset_y
+        self.settings_rect.x += self.settings_offset_x
+        self.settings_rect.y += self.settings_offset_y
+        self.exit_rect.x += self.exit_offset_x
+        self.exit_rect.y += self.exit_offset_y
     
     def _load_button_pair(self, normal_path, hover_path, target_rect):
-        """Load a normal + hover image pair. Scales both to fit target_rect proportionally.
-        Returns (normal_surface, hover_surface) or None if either file is missing."""
+        """Load a normal + hover image pair. Keeps the RAW full-resolution originals
+        and records the base target size so scaling is always done from the originals.
+        Returns (raw_normal, raw_hover, base_w, base_h) or None if files are missing."""
         try:
             if not os.path.isfile(normal_path) or not os.path.isfile(hover_path):
                 return None
             
-            normal_img = pygame.image.load(normal_path).convert_alpha()
-            hover_img = pygame.image.load(hover_path).convert_alpha()
+            # Load at FULL resolution — never downscale these stored copies
+            raw_normal = pygame.image.load(normal_path).convert_alpha()
+            raw_hover = pygame.image.load(hover_path).convert_alpha()
             
-            # Scale both images to fit the button rect while keeping aspect ratio
-            normal_scaled = self._scale_to_fit(normal_img, target_rect.width, target_rect.height)
-            hover_scaled = self._scale_to_fit(hover_img, target_rect.width, target_rect.height)
+            # Calculate the base target size (what 1.0 scale means) from the rect
+            base_w, base_h = self._calc_fit_size(
+                raw_normal.get_size(), target_rect.width, target_rect.height
+            )
             
-            # Update the button rect to match the actual scaled image size (centered at same position)
-            new_w, new_h = normal_scaled.get_size()
+            # Update the button rect to match the base image dimensions
             old_centery = target_rect.centery
-            target_rect.width = new_w
-            target_rect.height = new_h
+            target_rect.width = base_w
+            target_rect.height = base_h
             target_rect.centerx = SCREEN_W // 2
             target_rect.centery = old_centery
             
-            return (normal_scaled, hover_scaled)
+            return (raw_normal, raw_hover, base_w, base_h)
         except Exception:
             return None
     
-    def _scale_to_fit(self, surface, max_w, max_h):
-        """Scale a surface to fit within max_w x max_h while preserving aspect ratio."""
-        w, h = surface.get_size()
+    def _calc_fit_size(self, img_size, max_w, max_h):
+        """Calculate the target pixel size to fit within max_w x max_h, preserving aspect ratio."""
+        w, h = img_size
         scale = min(max_w / w, max_h / h)
-        new_w = max(1, int(w * scale))
-        new_h = max(1, int(h * scale))
-        return pygame.transform.smoothscale(surface, (new_w, new_h))
+        return max(1, int(w * scale)), max(1, int(h * scale))
+    
+    def _scale_from_raw(self, raw_surface, base_w, base_h, multiplier):
+        """Scale a raw full-res image directly to (base_w * multiplier, base_h * multiplier).
+        Always scales from the ORIGINAL high-res source in a single pass for maximum quality."""
+        final_w = max(1, int(base_w * multiplier))
+        final_h = max(1, int(base_h * multiplier))
+        return pygame.transform.smoothscale(raw_surface, (final_w, final_h))
     
     def handle_event(self, event) -> str:
         """Check if a menu button was clicked. Returns the button name or None."""
@@ -126,26 +182,36 @@ class MainMenu:
         
         # Draw each button — custom image if loaded, fallback to colored rect if not
         self._draw_button(screen, mouse_pos, self.play_rect, self.play_imgs,
+                          self.play_scale_normal, self.play_scale_hover,
                           "PLAY", (80, 200, 80), (50, 150, 50), (255, 255, 255), 3)
         self._draw_button(screen, mouse_pos, self.headwar_rect, self.headwar_imgs,
+                          self.headwar_scale_normal, self.headwar_scale_hover,
                           "HEAD WAR", (220, 90, 40), (180, 60, 25), (255, 200, 100), 3)
         self._draw_button(screen, mouse_pos, self.online_rect, self.online_imgs,
+                          self.online_scale_normal, self.online_scale_hover,
                           "ONLINE", (60, 120, 220), (40, 80, 170), (150, 200, 255), 3)
         self._draw_button(screen, mouse_pos, self.settings_rect, self.settings_imgs,
+                          self.settings_scale_normal, self.settings_scale_hover,
                           "SETTINGS", (185, 145, 65), (148, 108, 42), (255, 220, 150), 2)
         self._draw_button(screen, mouse_pos, self.exit_rect, self.exit_imgs,
+                          self.exit_scale_normal, self.exit_scale_hover,
                           "EXIT", (180, 50, 50), (140, 35, 35), (255, 150, 150), 2)
     
-    def _draw_button(self, screen, mouse_pos, rect, imgs, fallback_text,
-                     hover_color, normal_color, border_color, border_width):
-        """Draw a single menu button. Uses custom images if available, falls back to colored rect."""
+    def _draw_button(self, screen, mouse_pos, rect, imgs, scale_normal, scale_hover,
+                     fallback_text, hover_color, normal_color, border_color, border_width):
+        """Draw a single menu button. Uses custom images if available, falls back to colored rect.
+        Images are scaled from the RAW original and drawn CENTER-ANCHORED to the rect."""
         hovering = rect.collidepoint(mouse_pos)
         
         if imgs is not None:
-            # Custom image mode — swap between normal and hover
-            normal_surf, hover_surf = imgs
-            surf = hover_surf if hovering else normal_surf
-            screen.blit(surf, rect.topleft)
+            raw_normal, raw_hover, base_w, base_h = imgs
+            if hovering:
+                surf = self._scale_from_raw(raw_hover, base_w, base_h, scale_hover)
+            else:
+                surf = self._scale_from_raw(raw_normal, base_w, base_h, scale_normal)
+            # Center-anchor: draw from center of rect, not top-left
+            draw_rect = surf.get_rect(center=rect.center)
+            screen.blit(surf, draw_rect)
         else:
             # Fallback: draw the old colored rectangle + text
             btn_color = hover_color if hovering else normal_color

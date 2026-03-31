@@ -11,7 +11,7 @@ except ImportError:
 from src.constants import (
     SCREEN_W, SCREEN_H, VIRTUAL_W, VIRTUAL_H, SKY_COLOR, GROUND_Y,
     CLIFF_DEATH_Y, CONTROLS, P1_COLOR, P2_COLOR, PLAYER_WIDTH, PLAYER_HEIGHT,
-    load_or_placeholder, GIF_BLOOD_STRIP, GIF_BLOOD_FRAMES,
+    load_or_placeholder,
     GIF_KO_STRIP, GIF_KO_FRAMES, IMG_MENU_BG, MAX_AMMO,
     KNOCKBACK_FORCE, BOX_X,
     RESPAWN_DELAY, INVULN_DURATION, MAX_KILLS_TO_WIN,
@@ -59,7 +59,7 @@ class Game:
         self.menu_video_frame = None
         self._menu_frame_timer = 0.0
         self._init_menu_video()
-        self.hit_stop = 0.0  # added for screen freeze on big hits
+
         self.head_war_mode = False  # True = head-streak + respawn, False = normal rounds
         self.ko_winner_id = 0  # 1 or 2 — which player won
         self.ko_timer = 0.0    # countdown for K.O. screen
@@ -114,7 +114,7 @@ class Game:
         self.ammo_group = pygame.sprite.Group()
         
         # Initialize particle system
-        self.particles = ParticleSystem(GIF_BLOOD_STRIP, GIF_BLOOD_FRAMES)
+        self.particles = ParticleSystem()
         
         # Initialize pickup spawn manager
         self.spawn_manager = PickupSpawnManager(self.platforms)
@@ -429,21 +429,8 @@ class Game:
         # STATE_PLAYING
         self._update_playing(dt)
 
-    def add_hit_stop(self, duration: float):
-        """Freeze the game for a brief moment on big hits for dramatic impact."""
-        self.hit_stop = max(self.hit_stop, duration)
-        
     def _update_playing(self, dt):
         """Main gameplay tick: move players, check collisions, handle bullets, etc."""
-        # Hit stop freezes game logic for a moment to emphasize heavy impacts
-        if self.hit_stop > 0:
-            self.hit_stop -= dt
-            
-            # We still need to update the camera (screen shake should continue to decay)
-            p1_cx = self.p1.x + self.p1.width / 2
-            p2_cx = self.p2.x + self.p2.width / 2
-            self.camera.update(p1_cx, p2_cx, dt)
-            return
 
         keys = pygame.key.get_pressed()
         
@@ -561,7 +548,7 @@ class Game:
                         
                         if dist <= bullet.radius:
                             kb_dir = 1 if player.x > bullet.x else -1
-                            killed = player.take_damage(bullet.damage, player.rect.center, KNOCKBACK_FORCE * 1.5 * kb_dir)
+                            killed = player.take_damage(bullet.damage, player.rect.center, KNOCKBACK_FORCE * 1.5 * kb_dir, stun=True)
                             if killed:
                                 self._handle_kill(player.player_id, is_self_death=False)
                 continue
@@ -610,7 +597,9 @@ class Game:
                 else:
                     if hit_player:
                         kb_dir = 1 if bullet.vel_x > 0 else -1
-                        killed = hit_player.take_damage(bullet.damage, hit_player.rect.center, KNOCKBACK_FORCE * 0.3 * kb_dir)
+                        # Shotgun pellets stun, pistol bullets don't
+                        is_shotgun = isinstance(bullet, ShotgunPellet)
+                        killed = hit_player.take_damage(bullet.damage, hit_player.rect.center, KNOCKBACK_FORCE * 0.3 * kb_dir, stun=is_shotgun)
                         self.particles.spawn_blood(bullet.rect.centerx, bullet.rect.centery)
                         if killed:
                             self._handle_kill(hit_player.player_id, is_self_death=False)
@@ -806,7 +795,8 @@ class Game:
         self.ammo_group.empty()
         
         # Reset particle system
-        self.particles.active_sparks.clear()
+        self.particles.fast_particles.clear()
+        self.particles.muzzle_flashes.clear()
         
         # Reset spawn timers
         self.spawn_manager.health_timer = random.uniform(10.0, 15.0)

@@ -1,4 +1,4 @@
-# src/particles.py — All visual effects: blood splats, muzzle flashes, sparks, dust.
+# src/particles.py — All visual effects: blood drops, muzzle flashes, sparks, dust.
 # Uses lightweight draw calls instead of alpha surfaces for performance.
 
 import pygame
@@ -7,7 +7,7 @@ import random
 
 class GifPlayer:
     """Plays frame-by-frame animations from a horizontal PNG sprite strip.
-    Used for blood splat animations loaded from assets/effects/."""
+    Used by the KOScreen for the K.O. animation. NOT used for blood effects."""
     
     def __init__(self, strip_path: str, frame_count: int, fps: float = 24):
         try:
@@ -41,11 +41,6 @@ class GifPlayer:
         idx = min(self.current, len(self.frames) - 1)
         return self.frames[idx]
 
-
-class BaseParticle:
-    """Empty base class for particle types."""
-    def update(self, dt): pass
-    def draw(self, surface, camera): pass
 
 class FastParticle:
     """Tiny colored square that flies out and fades — used for blood drops, sparks, dust.
@@ -93,39 +88,17 @@ class MuzzleFlash:
         pygame.draw.circle(surface, (255, 180, 0), (cx, cy), outer_r)
         pygame.draw.circle(surface, (255, 255, 200), (cx, cy), inner_r)
 
-class BloodSpark:
-    """Animated blood effect that plays the sprite strip once then disappears."""
-    
-    def __init__(self, x, y, gif_strip_path, frame_count):
-        self.x = x
-        self.y = y
-        self.player = GifPlayer(gif_strip_path, frame_count, fps=20)
-        self.done = False
-    
-    def update(self, dt):
-        self.done = self.player.update(dt)
-    
-    def draw(self, surface, camera):
-        if not self.done:
-            frame = self.player.get_frame()
-            scaled = pygame.transform.scale(frame, (40, 40))
-            surface.blit(scaled, (self.x - 20, self.y - 20))
-
 
 class ParticleSystem:
     """Central manager for all particle effects. Call spawn_* methods to create effects,
     then call update() and draw() each frame to keep them alive."""
     
-    def __init__(self, blood_strip_path, blood_frames):
-        self.blood_strip_path = blood_strip_path
-        self.blood_frames = blood_frames
-        self.active_sparks = []     # Blood splat animations
+    def __init__(self):
         self.muzzle_flashes = []    # Gun flash effects
         self.fast_particles = []    # Tiny physics particles (blood drops, sparks, dust)
     
     def spawn_blood(self, x, y):
-        """Create a blood splat animation + a few small blood droplet particles."""
-        self.active_sparks.append(BloodSpark(x, y, self.blood_strip_path, self.blood_frames))
+        """Create a burst of small red blood droplet particles."""
         for _ in range(5):
             vx = random.uniform(-150, 150)
             vy = random.uniform(-250, 50)
@@ -155,12 +128,6 @@ class ParticleSystem:
     
     def update(self, dt):
         """Tick all active particles and remove dead ones."""
-        # Iterate backwards so we can safely remove items while looping
-        for i in range(len(self.active_sparks) - 1, -1, -1):
-            self.active_sparks[i].update(dt)
-            if self.active_sparks[i].done:
-                self.active_sparks.pop(i)
-                
         for i in range(len(self.muzzle_flashes) - 1, -1, -1):
             if self.muzzle_flashes[i].update(dt):
                 self.muzzle_flashes.pop(i)
@@ -171,8 +138,6 @@ class ParticleSystem:
     
     def draw(self, surface, camera):
         """Render all active particle effects to the screen."""
-        for spark in self.active_sparks:
-            spark.draw(surface, camera)
         for mf in self.muzzle_flashes:
             mf.draw(surface, camera)
         for fp in self.fast_particles:

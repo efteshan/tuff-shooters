@@ -451,25 +451,21 @@ class Player(PhysicsObject, pygame.sprite.Sprite):
                         hit_x = (knife_box.centerx + opp_box.centerx) // 2
                         hit_y = (knife_box.centery + opp_box.centery) // 2
                         kb = KNOCKBACK_FORCE if self.facing == 1 else -KNOCKBACK_FORCE
-                        killed = opponent.take_damage(KNIFE_DAMAGE, (hit_x, hit_y), kb)
+                        killed = opponent.take_damage(KNIFE_DAMAGE, (hit_x, hit_y), kb, stun=False)
                         particle_system.spawn_blood(hit_x, hit_y)
                         if killed and self.game:
                             self.game._handle_kill(opponent.player_id, is_self_death=False)
     
-    def take_damage(self, amount: int, hit_pos: tuple, knockback_x: float = 0.0):
+    def take_damage(self, amount: int, hit_pos: tuple, knockback_x: float = 0.0, stun: bool = True):
         """Apply damage to this player. Triggers hit-stop, knockback, and death if HP hits 0.
+        stun=True (shotgun/bazooka): freezes player movement for HIT_STUN_DURATION.
+        stun=False (pistol/knife): knockback pushes the player but they can keep acting.
         Returns True if this hit killed the player."""
         if not self.alive:
             return False
         if self.is_invulnerable:
             return False
             
-        # Add hit-stop based on damage dealt (heavy hits = longer screen pause)
-        if self.game and hasattr(self.game, 'add_hit_stop'):
-            # e.g., 25 damage (bazooka) -> 0.15s, 5 damage (bullet) -> 0.03s
-            freeze_time = min(0.2, amount * 0.006)
-            self.game.add_hit_stop(freeze_time)
-        
         # Bug fix #4: Use max to prevent negative health
         self.health = max(0, self.health - amount)
         
@@ -478,16 +474,16 @@ class Player(PhysicsObject, pygame.sprite.Sprite):
         
         if self.health > 0 and knockback_x != 0:
             self.vel_x = knockback_x
-            self.hit_stun_timer = HIT_STUN_DURATION
+            # Only freeze player controls if stun is True (shotgun/bazooka hits)
+            if stun:
+                self.hit_stun_timer = HIT_STUN_DURATION
         
         if self.health <= 0:
             # Determine hit direction for directional ragdoll
             hit_dir = 1 if knockback_x > 0 else (-1 if knockback_x < 0 else 0)
             self.die(hit_dir=hit_dir)
             
-            # Tier 6: Longer hit-stop + screen shake on kill
-            if self.game and hasattr(self.game, 'add_hit_stop'):
-                self.game.add_hit_stop(0.1)  # brief dramatic pause
+            # Screen shake on kill for visual feedback
             if self.game and hasattr(self.game, 'camera'):
                 self.game.camera.add_shake(4, 0.2)
             return True
