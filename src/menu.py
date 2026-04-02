@@ -222,11 +222,42 @@ class MainMenu:
 
 
 class PauseMenu:
-    """Overlay that appears when the game is paused. Has Continue, Start New, and Exit buttons."""
+    """Overlay that appears when the game is paused. Has Continue, Start New, and Exit buttons.
+    Supports custom background image and custom button images with hover states.
+    All elements support manual X/Y offset and scale multipliers."""
     
     def __init__(self, font):
         self.font = font
         self.audio_manager = None
+        
+        # ================================================================
+        # POSITION OFFSETS — shift elements from their default positions.
+        # Positive X = right, Negative X = left.
+        # Positive Y = down,  Negative Y = up.
+        # ================================================================
+        self.bg_offset_x         = 0
+        self.bg_offset_y         = 0
+        self.continue_offset_x   = 0
+        self.continue_offset_y   = -20
+        self.new_offset_x        = 0
+        self.new_offset_y        = -12
+        self.pause_exit_offset_x = 0
+        self.pause_exit_offset_y = -9
+        # ================================================================
+        
+        # ================================================================
+        # SIZE MULTIPLIERS — scale images up/down from raw full-res.
+        # 1.0 = default size. Quality is always crisp.
+        # ================================================================
+        self.bg_scale               = 1.25
+        self.continue_scale_normal  = 1.2
+        self.continue_scale_hover   = 1.15
+        self.new_scale_normal       = 1.3
+        self.new_scale_hover        = 1.25
+        self.pause_exit_scale_normal = 1.0
+        self.pause_exit_scale_hover  = 0.95
+        # ================================================================
+        
         w, h = 340, 320
         self.panel_rect = pygame.Rect(SCREEN_W//2 - w//2, SCREEN_H//2 - h//2, w, h)
         
@@ -238,19 +269,53 @@ class PauseMenu:
         self.btn_continue = pygame.Rect(cx, base_y, bw, bh)
         self.btn_new = pygame.Rect(cx, base_y + gap, bw, bh)
         self.btn_exit = pygame.Rect(cx, base_y + gap * 2, bw, bh)
+        
+        # Pre-build dark overlay
+        self._overlay = pygame.Surface((SCREEN_W, SCREEN_H), pygame.SRCALPHA)
+        self._overlay.fill((0, 0, 0, 160))
+        
+        # ── Load custom images (raw full-res for crisp scaling) ──
+        self._raw_bg = self._try_load_raw("assets/ui/pause_bg.png")
+        self._raw_continue = self._try_load_raw("assets/ui/buttons/continue.png")
+        self._raw_continue_hover = self._try_load_raw("assets/ui/buttons/continue_hover.png")
+        self._raw_new = self._try_load_raw("assets/ui/buttons/start_new.png")
+        self._raw_new_hover = self._try_load_raw("assets/ui/buttons/start_new_hover.png")
+        self._raw_exit = self._try_load_raw("assets/ui/buttons/pause_exit.png")
+        self._raw_exit_hover = self._try_load_raw("assets/ui/buttons/pause_exit_hover.png")
+    
+    def _try_load_raw(self, path):
+        """Load an image at full resolution. Returns None if file is missing."""
+        try:
+            if os.path.isfile(path):
+                return pygame.image.load(path).convert_alpha()
+        except Exception:
+            pass
+        return None
+    
+    def _scale_raw(self, raw_surface, target_w, target_h, multiplier):
+        """Scale a raw full-res image to (target_w * multiplier, target_h * multiplier).
+        Always scales from the ORIGINAL for maximum quality."""
+        final_w = max(1, int(target_w * multiplier))
+        final_h = max(1, int(target_h * multiplier))
+        return pygame.transform.smoothscale(raw_surface, (final_w, final_h))
     
     def handle_event(self, event) -> str:
         """Returns which button was clicked, or None. Escape also counts as 'continue'."""
         if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
-            if self.btn_continue.collidepoint(event.pos):
+            # Check with offsets applied
+            cont_rect = self.btn_continue.move(self.continue_offset_x, self.continue_offset_y)
+            new_rect = self.btn_new.move(self.new_offset_x, self.new_offset_y)
+            exit_rect = self.btn_exit.move(self.pause_exit_offset_x, self.pause_exit_offset_y)
+            
+            if cont_rect.collidepoint(event.pos):
                 if self.audio_manager:
                     self.audio_manager.play_sound("menu_click")
                 return "continue"
-            if self.btn_new.collidepoint(event.pos):
+            if new_rect.collidepoint(event.pos):
                 if self.audio_manager:
                     self.audio_manager.play_sound("menu_click")
                 return "new"
-            if self.btn_exit.collidepoint(event.pos):
+            if exit_rect.collidepoint(event.pos):
                 if self.audio_manager:
                     self.audio_manager.play_sound("menu_click")
                 return "exit"
@@ -260,32 +325,57 @@ class PauseMenu:
             return "continue"
         return None
     
+    def _draw_custom_button(self, screen, mouse, rect, raw_normal, raw_hover,
+                            scale_normal, scale_hover, ox, oy, fallback_label):
+        """Draw a single pause menu button with custom images or colored fallback."""
+        shifted = rect.move(ox, oy)
+        hovering = shifted.collidepoint(mouse)
+        
+        if raw_normal is not None and raw_hover is not None:
+            raw = raw_hover if hovering else raw_normal
+            scale = scale_hover if hovering else scale_normal
+            surf = self._scale_raw(raw, rect.width, rect.height, scale)
+            screen.blit(surf, surf.get_rect(center=shifted.center))
+        else:
+            color = (70, 130, 200) if hovering else (45, 90, 150)
+            pygame.draw.rect(screen, color, shifted, border_radius=10)
+            pygame.draw.rect(screen, (200, 200, 220), shifted, 2, border_radius=10)
+            text = self.font.render(fallback_label, True, (255, 255, 255))
+            screen.blit(text, text.get_rect(center=shifted.center))
+    
     def draw(self, screen):
         # Dark semi-transparent backdrop
-        overlay = pygame.Surface((SCREEN_W, SCREEN_H), pygame.SRCALPHA)
-        overlay.fill((0, 0, 0, 160))
-        screen.blit(overlay, (0, 0))
+        screen.blit(self._overlay, (0, 0))
         
-        # Panel card
-        pygame.draw.rect(screen, (30, 30, 40), self.panel_rect, border_radius=16)
-        pygame.draw.rect(screen, (100, 100, 120), self.panel_rect, 3, border_radius=16)
-        
-        title = self.font.render("PAUSED", True, (255, 220, 60))
-        screen.blit(title, title.get_rect(centerx=SCREEN_W//2, y=self.panel_rect.y + 24))
-        
-        # Render each button with hover highlight
         mouse = pygame.mouse.get_pos()
-        for rect, label in [
-            (self.btn_continue, "Continue"),
-            (self.btn_new, "Start New"),
-            (self.btn_exit, "Exit"),
-        ]:
-            hover = rect.collidepoint(mouse)
-            color = (70, 130, 200) if hover else (45, 90, 150)
-            pygame.draw.rect(screen, color, rect, border_radius=10)
-            pygame.draw.rect(screen, (200, 200, 220), rect, 2, border_radius=10)
-            text = self.font.render(label, True, (255, 255, 255))
-            screen.blit(text, text.get_rect(center=rect.center))
+        
+        # ── Custom background image or fallback panel ──
+        if self._raw_bg is not None:
+            bg_surf = self._scale_raw(self._raw_bg, self.panel_rect.width, self.panel_rect.height, self.bg_scale)
+            bg_draw = bg_surf.get_rect(center=(
+                self.panel_rect.centerx + self.bg_offset_x,
+                self.panel_rect.centery + self.bg_offset_y
+            ))
+            screen.blit(bg_surf, bg_draw)
+        else:
+            pygame.draw.rect(screen, (30, 30, 40), self.panel_rect, border_radius=16)
+            pygame.draw.rect(screen, (100, 100, 120), self.panel_rect, 3, border_radius=16)
+            title = self.font.render("PAUSED", True, (255, 220, 60))
+            screen.blit(title, title.get_rect(centerx=SCREEN_W//2, y=self.panel_rect.y + 24))
+        
+        # ── Buttons ──
+        self._draw_custom_button(screen, mouse, self.btn_continue,
+                                 self._raw_continue, self._raw_continue_hover,
+                                 self.continue_scale_normal, self.continue_scale_hover,
+                                 self.continue_offset_x, self.continue_offset_y, "Continue")
+        self._draw_custom_button(screen, mouse, self.btn_new,
+                                 self._raw_new, self._raw_new_hover,
+                                 self.new_scale_normal, self.new_scale_hover,
+                                 self.new_offset_x, self.new_offset_y, "Start New")
+        self._draw_custom_button(screen, mouse, self.btn_exit,
+                                 self._raw_exit, self._raw_exit_hover,
+                                 self.pause_exit_scale_normal, self.pause_exit_scale_hover,
+                                 self.pause_exit_offset_x, self.pause_exit_offset_y, "Exit")
 
 
 class GameOverMenu:
@@ -348,17 +438,48 @@ class GameOverMenu:
 
 class SettingsMenu:
     """Settings popup that overlays the menu. Contains:
-    1. A close (X) button at the top right
-    2. A background music volume slider
-    3. The Drop Faces interface (face upload boxes + head size controls)"""
+    1. A custom background image (or fallback panel)
+    2. A custom close (X) button with hover image
+    3. A Music volume slider (light brown)
+    4. An SFX volume slider (light brown)
+    5. The Drop Faces interface (face upload boxes + head size controls)
+    All elements support manual X/Y offset and scale multipliers."""
     
     def __init__(self, font_large, font_medium):
         self.font_large = font_large
         self.font_medium = font_medium
         self.audio_manager = None
         
-        # Main panel centered on screen — taller to fit both settings and drop faces
-        pw, ph = 620, 520
+        # ================================================================
+        # POSITION OFFSETS — shift elements from their default positions.
+        # Positive X = right, Negative X = left.
+        # Positive Y = down,  Negative Y = up.
+        # ================================================================
+        self.bg_offset_x         = 0
+        self.bg_offset_y         = 0
+        self.close_offset_x      = 0
+        self.close_offset_y      = 0
+        self.music_bar_offset_x  = 0
+        self.music_bar_offset_y  = 0
+        self.sfx_bar_offset_x    = 0
+        self.sfx_bar_offset_y    = 0
+        self.p1_faces_offset_x   = 0
+        self.p1_faces_offset_y   = 0
+        self.p2_faces_offset_x   = 0
+        self.p2_faces_offset_y   = 0
+        # ================================================================
+        
+        # ================================================================
+        # SIZE MULTIPLIERS — scale images up/down from raw full-res.
+        # 1.0 = default size. Quality is always crisp.
+        # ================================================================
+        self.bg_scale            = 1.0
+        self.close_scale_normal  = 1.0
+        self.close_scale_hover   = 1.0
+        # ================================================================
+        
+        # Main panel centered on screen — taller to fit settings, SFX bar, and drop faces
+        pw, ph = 620, 560
         self.panel_rect = pygame.Rect(SCREEN_W//2 - pw//2, SCREEN_H//2 - ph//2, pw, ph)
         px, py = self.panel_rect.x, self.panel_rect.y
         
@@ -366,17 +487,24 @@ class SettingsMenu:
         close_size = 32
         self.close_rect = pygame.Rect(px + pw - close_size - 10, py + 10, close_size, close_size)
         
-        # ── Volume slider ──
+        # ── Music volume slider ──
         slider_w = 360
         slider_h = 8
-        slider_y = py + 80
-        self.slider_track = pygame.Rect(SCREEN_W//2 - slider_w//2, slider_y, slider_w, slider_h)
-        self.volume = 1.0  # 0.0 – 1.0
-        self.slider_knob_radius = 10
-        self.dragging_slider = False
+        music_slider_y = py + 80
+        self.music_slider_track = pygame.Rect(SCREEN_W//2 - slider_w//2, music_slider_y, slider_w, slider_h)
+        self.music_volume = 1.0
+        self.music_knob_radius = 10
+        self.dragging_music = False
+        
+        # ── SFX volume slider ──
+        sfx_slider_y = music_slider_y + 70
+        self.sfx_slider_track = pygame.Rect(SCREEN_W//2 - slider_w//2, sfx_slider_y, slider_w, slider_h)
+        self.sfx_volume = 1.0
+        self.sfx_knob_radius = 10
+        self.dragging_sfx = False
         
         # ── Drop Faces section ──
-        faces_top = slider_y + 60  # start below the slider
+        faces_top = sfx_slider_y + 60
         
         # Face preview boxes (P1 left, P2 right)
         box_size = 100
@@ -414,6 +542,27 @@ class SettingsMenu:
         self._font_small = pygame.font.Font(None, 22)
         self._font_btn = pygame.font.Font(None, 28)
         self._font_section = pygame.font.Font(None, 32)
+        
+        # ── Load custom images (raw full-res for crisp scaling) ──
+        self._raw_bg = self._try_load_raw("assets/ui/settings_bg.png")
+        self._raw_close = self._try_load_raw("assets/ui/close.png")
+        self._raw_close_hover = self._try_load_raw("assets/ui/close_hover.png")
+    
+    def _try_load_raw(self, path):
+        """Load an image at full resolution. Returns None if file is missing."""
+        try:
+            if os.path.isfile(path):
+                return pygame.image.load(path).convert_alpha()
+        except Exception:
+            pass
+        return None
+    
+    def _scale_raw(self, raw_surface, target_w, target_h, multiplier):
+        """Scale a raw full-res image to (target_w * multiplier, target_h * multiplier).
+        Always scales from the ORIGINAL for maximum quality."""
+        final_w = max(1, int(target_w * multiplier))
+        final_h = max(1, int(target_h * multiplier))
+        return pygame.transform.smoothscale(raw_surface, (final_w, final_h))
     
     def _open_file_dialog(self):
         """Open a native Windows file picker. Returns a scaled pygame Surface or None."""
@@ -439,19 +588,18 @@ class SettingsMenu:
             pass
         return None
     
-    def _get_knob_x(self):
-        """Calculate the X position of the volume slider knob."""
-        return self.slider_track.x + int(self.volume * self.slider_track.width)
+    def _get_knob_x(self, track, volume):
+        """Calculate the X position of a slider knob."""
+        return track.x + int(volume * track.width)
     
-    def _knob_rect(self):
-        """Get the clickable rectangle for the slider knob."""
-        kx = self._get_knob_x()
-        ky = self.slider_track.centery
-        r = self.slider_knob_radius
-        return pygame.Rect(kx - r, ky - r, r * 2, r * 2)
+    def _knob_rect(self, track, volume, radius):
+        """Get the clickable rectangle for a slider knob."""
+        kx = self._get_knob_x(track, volume)
+        ky = track.centery
+        return pygame.Rect(kx - radius, ky - radius, radius * 2, radius * 2)
     
     def handle_event(self, event) -> str:
-        """Handle clicks on close button, volume slider, face boxes, remove/size buttons.
+        """Handle clicks on close button, volume sliders, face boxes, remove/size buttons.
         Returns 'done' when the player closes the panel, otherwise None."""
         
         if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
@@ -461,11 +609,18 @@ class SettingsMenu:
                     self.audio_manager.play_sound("menu_click")
                 return "done"
             
-            # Volume slider — start dragging if clicked on knob or track
-            knob = self._knob_rect()
-            if knob.collidepoint(event.pos) or self.slider_track.collidepoint(event.pos):
-                self.dragging_slider = True
-                self._update_slider_from_mouse(event.pos[0])
+            # Music slider — start dragging if clicked on knob or track
+            music_knob = self._knob_rect(self.music_slider_track, self.music_volume, self.music_knob_radius)
+            if music_knob.collidepoint(event.pos) or self.music_slider_track.collidepoint(event.pos):
+                self.dragging_music = True
+                self._update_music_from_mouse(event.pos[0])
+                return None
+            
+            # SFX slider — start dragging
+            sfx_knob = self._knob_rect(self.sfx_slider_track, self.sfx_volume, self.sfx_knob_radius)
+            if sfx_knob.collidepoint(event.pos) or self.sfx_slider_track.collidepoint(event.pos):
+                self.dragging_sfx = True
+                self._update_sfx_from_mouse(event.pos[0])
                 return None
             
             # Face upload boxes
@@ -512,15 +667,22 @@ class SettingsMenu:
                 self.p2_head_base = min(2.0, round(self.p2_head_base + 0.1, 1))
                 return None
         
-        # Dragging the slider knob
-        if event.type == pygame.MOUSEMOTION and self.dragging_slider:
-            self._update_slider_from_mouse(event.pos[0])
-            return None
+        # Dragging sliders
+        if event.type == pygame.MOUSEMOTION:
+            if self.dragging_music:
+                self._update_music_from_mouse(event.pos[0])
+                return None
+            if self.dragging_sfx:
+                self._update_sfx_from_mouse(event.pos[0])
+                return None
         
-        # Release the slider knob
+        # Release slider knobs
         if event.type == pygame.MOUSEBUTTONUP and event.button == 1:
-            if self.dragging_slider:
-                self.dragging_slider = False
+            if self.dragging_music:
+                self.dragging_music = False
+                return None
+            if self.dragging_sfx:
+                self.dragging_sfx = False
                 return None
         
         # Escape key closes the settings
@@ -529,13 +691,46 @@ class SettingsMenu:
         
         return None
     
-    def _update_slider_from_mouse(self, mouse_x):
-        """Recalculate volume from mouse X position on the slider track."""
-        rel = mouse_x - self.slider_track.x
-        self.volume = max(0.0, min(1.0, rel / self.slider_track.width))
-        # Apply volume immediately
+    def _update_music_from_mouse(self, mouse_x):
+        """Recalculate music volume from mouse X position on the slider track."""
+        rel = mouse_x - self.music_slider_track.x
+        self.music_volume = max(0.0, min(1.0, rel / self.music_slider_track.width))
         if self.audio_manager:
-            self.audio_manager.set_music_volume(self.volume)
+            self.audio_manager.set_music_volume(self.music_volume)
+    
+    def _update_sfx_from_mouse(self, mouse_x):
+        """Recalculate SFX volume from mouse X position on the slider track."""
+        rel = mouse_x - self.sfx_slider_track.x
+        self.sfx_volume = max(0.0, min(1.0, rel / self.sfx_slider_track.width))
+        if self.audio_manager:
+            self.audio_manager.set_sfx_volume(self.sfx_volume)
+    
+    def _draw_slider(self, screen, mouse, track, volume, knob_radius, dragging, label, ox, oy):
+        """Draw a single light brown slider with label, track, filled portion, knob, and percentage."""
+        # Apply offset
+        shifted_track = track.move(ox, oy)
+        
+        # Label above the bar
+        lbl = self._font_section.render(label, True, (220, 200, 160))
+        screen.blit(lbl, lbl.get_rect(centerx=shifted_track.centerx, bottom=shifted_track.y - 8))
+        
+        # Track background (dark brown)
+        pygame.draw.rect(screen, (80, 65, 45), shifted_track, border_radius=4)
+        # Filled portion (light brown)
+        filled_w = int(volume * shifted_track.width)
+        if filled_w > 0:
+            filled_rect = pygame.Rect(shifted_track.x, shifted_track.y, filled_w, shifted_track.height)
+            pygame.draw.rect(screen, (195, 155, 95), filled_rect, border_radius=4)
+        # Knob
+        kx = shifted_track.x + int(volume * shifted_track.width)
+        ky = shifted_track.centery
+        knob_color = (230, 195, 130) if dragging else (195, 155, 95)
+        pygame.draw.circle(screen, knob_color, (kx, ky), knob_radius)
+        pygame.draw.circle(screen, (240, 220, 180), (kx, ky), knob_radius, 2)
+        
+        # Volume percentage text
+        vol_pct = self._font_small.render(f"{int(volume * 100)}%", True, (180, 170, 150))
+        screen.blit(vol_pct, vol_pct.get_rect(centerx=shifted_track.centerx, top=shifted_track.bottom + 6))
     
     def draw(self, screen, video_frame=None, bg_image=None):
         """Draw the settings popup over the darkened background.
@@ -551,48 +746,57 @@ class SettingsMenu:
         # Dark overlay to dim the background
         screen.blit(self._overlay, (0, 0))
         
-        # Panel card
-        pygame.draw.rect(screen, (35, 30, 25), self.panel_rect, border_radius=16)
-        pygame.draw.rect(screen, (180, 140, 60), self.panel_rect, 3, border_radius=16)
+        mouse = pygame.mouse.get_pos()
+        
+        # ── Custom background image or fallback panel ──
+        if self._raw_bg is not None:
+            bg_surf = self._scale_raw(self._raw_bg, self.panel_rect.width, self.panel_rect.height, self.bg_scale)
+            bg_draw = bg_surf.get_rect(center=(
+                self.panel_rect.centerx + self.bg_offset_x,
+                self.panel_rect.centery + self.bg_offset_y
+            ))
+            screen.blit(bg_surf, bg_draw)
+        else:
+            pygame.draw.rect(screen, (35, 30, 25), self.panel_rect, border_radius=16)
+            pygame.draw.rect(screen, (180, 140, 60), self.panel_rect, 3, border_radius=16)
         
         # Title
         title = self.font_large.render("SETTINGS", True, (255, 210, 80))
         screen.blit(title, title.get_rect(centerx=SCREEN_W//2, y=self.panel_rect.y + 16))
         
-        mouse = pygame.mouse.get_pos()
+        # ── Close (X) button — custom image or fallback ──
+        close_cx = self.close_rect.centerx + self.close_offset_x
+        close_cy = self.close_rect.centery + self.close_offset_y
+        hover_close = self.close_rect.move(self.close_offset_x, self.close_offset_y).collidepoint(mouse)
         
-        # ── Close (X) button ──
-        hover_close = self.close_rect.collidepoint(mouse)
-        close_color = (200, 60, 60) if hover_close else (120, 50, 50)
-        pygame.draw.rect(screen, close_color, self.close_rect, border_radius=6)
-        pygame.draw.rect(screen, (220, 180, 180), self.close_rect, 2, border_radius=6)
-        x_text = self._font_btn.render("X", True, (255, 255, 255))
-        screen.blit(x_text, x_text.get_rect(center=self.close_rect.center))
+        if self._raw_close is not None and self._raw_close_hover is not None:
+            raw = self._raw_close_hover if hover_close else self._raw_close
+            scale = self.close_scale_hover if hover_close else self.close_scale_normal
+            close_surf = self._scale_raw(raw, self.close_rect.width, self.close_rect.height, scale)
+            screen.blit(close_surf, close_surf.get_rect(center=(close_cx, close_cy)))
+        else:
+            shifted_close = self.close_rect.move(self.close_offset_x, self.close_offset_y)
+            close_color = (200, 60, 60) if hover_close else (120, 50, 50)
+            pygame.draw.rect(screen, close_color, shifted_close, border_radius=6)
+            pygame.draw.rect(screen, (220, 180, 180), shifted_close, 2, border_radius=6)
+            x_text = self._font_btn.render("X", True, (255, 255, 255))
+            screen.blit(x_text, x_text.get_rect(center=shifted_close.center))
         
-        # ── Volume Slider ──
-        vol_label = self._font_section.render("Background Volume", True, (220, 200, 160))
-        screen.blit(vol_label, vol_label.get_rect(centerx=SCREEN_W//2, bottom=self.slider_track.y - 8))
+        # Update close rect for click detection (with offset)
+        self._close_hit = self.close_rect.move(self.close_offset_x, self.close_offset_y)
         
-        # Track background (dark bar)
-        pygame.draw.rect(screen, (60, 55, 45), self.slider_track, border_radius=4)
-        # Filled portion (golden)
-        filled_w = int(self.volume * self.slider_track.width)
-        if filled_w > 0:
-            filled_rect = pygame.Rect(self.slider_track.x, self.slider_track.y, filled_w, self.slider_track.height)
-            pygame.draw.rect(screen, (220, 180, 60), filled_rect, border_radius=4)
-        # Knob
-        kx = self._get_knob_x()
-        ky = self.slider_track.centery
-        knob_color = (255, 220, 100) if self.dragging_slider else (200, 170, 80)
-        pygame.draw.circle(screen, knob_color, (kx, ky), self.slider_knob_radius)
-        pygame.draw.circle(screen, (255, 240, 180), (kx, ky), self.slider_knob_radius, 2)
+        # ── Music Volume Slider (light brown) ──
+        self._draw_slider(screen, mouse, self.music_slider_track, self.music_volume,
+                          self.music_knob_radius, self.dragging_music,
+                          "Music Volume", self.music_bar_offset_x, self.music_bar_offset_y)
         
-        # Volume percentage text
-        vol_pct = self._font_small.render(f"{int(self.volume * 100)}%", True, (180, 170, 150))
-        screen.blit(vol_pct, vol_pct.get_rect(centerx=SCREEN_W//2, top=self.slider_track.bottom + 6))
+        # ── SFX Volume Slider (light brown) ──
+        self._draw_slider(screen, mouse, self.sfx_slider_track, self.sfx_volume,
+                          self.sfx_knob_radius, self.dragging_sfx,
+                          "Sound Effects", self.sfx_bar_offset_x, self.sfx_bar_offset_y)
         
         # ── Drop Faces section title ──
-        faces_title_y = self.slider_track.bottom + 32
+        faces_title_y = self.sfx_slider_track.y + self.sfx_bar_offset_y + 40
         df_title = self._font_section.render("Drop Faces", True, (255, 210, 80))
         screen.blit(df_title, df_title.get_rect(centerx=SCREEN_W//2, y=faces_title_y))
         
@@ -600,66 +804,80 @@ class SettingsMenu:
         screen.blit(sub, sub.get_rect(centerx=SCREEN_W//2, y=faces_title_y + 28))
         
         # ── Player face zones ──
-        for label, box, face, remove_rect, color in [
-            ("P1", self.p1_box, self.p1_face, self.p1_remove, (60, 120, 220)),
-            ("P2", self.p2_box, self.p2_face, self.p2_remove, (220, 60, 60)),
+        for label, box, face, remove_rect, color, ox, oy in [
+            ("P1", self.p1_box, self.p1_face, self.p1_remove, (60, 120, 220),
+             self.p1_faces_offset_x, self.p1_faces_offset_y),
+            ("P2", self.p2_box, self.p2_face, self.p2_remove, (220, 60, 60),
+             self.p2_faces_offset_x, self.p2_faces_offset_y),
         ]:
+            shifted_box = box.move(ox, oy)
+            shifted_remove = remove_rect.move(ox, oy)
+            
             # Player label
             lbl = self.font_medium.render(label, True, color)
-            screen.blit(lbl, lbl.get_rect(centerx=box.centerx, bottom=box.y - 8))
+            screen.blit(lbl, lbl.get_rect(centerx=shifted_box.centerx, bottom=shifted_box.y - 8))
             
             # Drop zone box — highlights on hover
-            hover_box = box.collidepoint(mouse)
+            hover_box = shifted_box.collidepoint(mouse)
             box_bg = (60, 55, 45) if not hover_box else (80, 75, 55)
-            pygame.draw.rect(screen, box_bg, box, border_radius=10)
-            pygame.draw.rect(screen, color, box, 2, border_radius=10)
+            pygame.draw.rect(screen, box_bg, shifted_box, border_radius=10)
+            pygame.draw.rect(screen, color, shifted_box, 2, border_radius=10)
             
             if face is not None:
                 # Show preview of the selected face image
                 fw, fh = face.get_size()
-                pmax = box.width - 16
+                pmax = shifted_box.width - 16
                 pscale = min(pmax / fw, pmax / fh)
                 pw2, ph2 = int(fw * pscale), int(fh * pscale)
                 preview = pygame.transform.smoothscale(face, (max(1, pw2), max(1, ph2)))
-                screen.blit(preview, preview.get_rect(center=box.center))
+                screen.blit(preview, preview.get_rect(center=shifted_box.center))
             else:
                 # Big "+" icon when no face is selected yet
                 plus = self._font_plus.render("+", True, (120, 110, 90))
-                screen.blit(plus, plus.get_rect(center=box.center))
+                screen.blit(plus, plus.get_rect(center=shifted_box.center))
             
             # Remove button (only shown when a face is selected)
             if face is not None:
-                hover_rm = remove_rect.collidepoint(mouse)
+                hover_rm = shifted_remove.collidepoint(mouse)
                 rm_color = (180, 60, 60) if hover_rm else (120, 50, 50)
-                pygame.draw.rect(screen, rm_color, remove_rect, border_radius=6)
-                pygame.draw.rect(screen, (200, 150, 150), remove_rect, 1, border_radius=6)
+                pygame.draw.rect(screen, rm_color, shifted_remove, border_radius=6)
+                pygame.draw.rect(screen, (200, 150, 150), shifted_remove, 1, border_radius=6)
                 rm_text = self._font_small.render("Remove", True, (255, 220, 220))
-                screen.blit(rm_text, rm_text.get_rect(center=remove_rect.center))
+                screen.blit(rm_text, rm_text.get_rect(center=shifted_remove.center))
         
         # ── Head size +/- controls ──
-        for minus_r, plus_r, scale_val in [
-            (self.p1_minus, self.p1_plus, self.p1_head_base),
-            (self.p2_minus, self.p2_plus, self.p2_head_base),
+        for minus_r, plus_r, scale_val, ox, oy in [
+            (self.p1_minus, self.p1_plus, self.p1_head_base,
+             self.p1_faces_offset_x, self.p1_faces_offset_y),
+            (self.p2_minus, self.p2_plus, self.p2_head_base,
+             self.p2_faces_offset_x, self.p2_faces_offset_y),
         ]:
-            hover_m = minus_r.collidepoint(mouse)
-            c_m = (100, 80, 60) if hover_m else (70, 55, 40)
-            pygame.draw.rect(screen, c_m, minus_r, border_radius=6)
-            pygame.draw.rect(screen, (160, 130, 80), minus_r, 1, border_radius=6)
-            mt = self._font_btn.render("-", True, (255, 230, 180))
-            screen.blit(mt, mt.get_rect(center=minus_r.center))
+            shifted_minus = minus_r.move(ox, oy)
+            shifted_plus = plus_r.move(ox, oy)
             
-            hover_p = plus_r.collidepoint(mouse)
+            hover_m = shifted_minus.collidepoint(mouse)
+            c_m = (100, 80, 60) if hover_m else (70, 55, 40)
+            pygame.draw.rect(screen, c_m, shifted_minus, border_radius=6)
+            pygame.draw.rect(screen, (160, 130, 80), shifted_minus, 1, border_radius=6)
+            mt = self._font_btn.render("-", True, (255, 230, 180))
+            screen.blit(mt, mt.get_rect(center=shifted_minus.center))
+            
+            hover_p = shifted_plus.collidepoint(mouse)
             c_p = (100, 80, 60) if hover_p else (70, 55, 40)
-            pygame.draw.rect(screen, c_p, plus_r, border_radius=6)
-            pygame.draw.rect(screen, (160, 130, 80), plus_r, 1, border_radius=6)
+            pygame.draw.rect(screen, c_p, shifted_plus, border_radius=6)
+            pygame.draw.rect(screen, (160, 130, 80), shifted_plus, 1, border_radius=6)
             pt = self._font_btn.render("+", True, (255, 230, 180))
-            screen.blit(pt, pt.get_rect(center=plus_r.center))
+            screen.blit(pt, pt.get_rect(center=shifted_plus.center))
             
             # Current scale value displayed between the buttons
             sv = self._font_small.render(f"{scale_val:.1f}x", True, (200, 180, 140))
-            sx = (minus_r.right + plus_r.left) // 2
-            sy = minus_r.centery
+            sx = (shifted_minus.right + shifted_plus.left) // 2
+            sy = shifted_minus.centery
             screen.blit(sv, sv.get_rect(center=(sx, sy)))
+
+
+
+
 
 
 class OnlineMenu:

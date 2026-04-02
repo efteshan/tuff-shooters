@@ -4,12 +4,14 @@
 import pygame
 
 class AudioManager:
-    """Loads .wav files by name and plays them on demand."""
+    """Loads .wav files by name and plays them on demand.
+    Music and SFX volumes are controlled independently."""
 
     def __init__(self):
         pygame.mixer.init()
         self.sounds = {}       # {"gunshot": <Sound>, "jump": <Sound>, ...}
         self.music_path = None
+        self.sfx_volume = 1.0  # Independent volume for all sound effects (0.0 – 1.0)
 
     def load_sound(self, name, path):
         """Try to load a sound file. If the file doesn't exist, store None so it fails silently."""
@@ -20,8 +22,9 @@ class AudioManager:
             self.sounds[name] = None
 
     def play_sound(self, name):
-        """Play a previously loaded sound by its name."""
+        """Play a previously loaded sound by its name, scaled by sfx_volume."""
         if name in self.sounds and self.sounds[name]:
+            self.sounds[name].set_volume(self.sfx_volume)
             self.sounds[name].play()
 
     def load_music(self, path):
@@ -45,6 +48,15 @@ class AudioManager:
     def get_music_volume(self):
         """Return the current music volume (0.0 – 1.0)."""
         return pygame.mixer.music.get_volume()
+
+    def set_sfx_volume(self, volume):
+        """Set SFX volume. volume is a float from 0.0 (mute) to 1.0 (full).
+        Affects all sounds: weapons, pickups, jumps, UI clicks, etc."""
+        self.sfx_volume = max(0.0, min(1.0, volume))
+
+    def get_sfx_volume(self):
+        """Return the current SFX volume (0.0 – 1.0)."""
+        return self.sfx_volume
 
     def stop_music(self):
         """Stop whatever music is currently playing."""
