@@ -249,7 +249,7 @@ class PauseMenu:
         # SIZE MULTIPLIERS — scale images up/down from raw full-res.
         # 1.0 = default size. Quality is always crisp.
         # ================================================================
-        self.bg_scale               = 1.25
+        self.bg_scale               = 1.27
         self.continue_scale_normal  = 1.2
         self.continue_scale_hover   = 1.15
         self.new_scale_normal       = 1.3
@@ -451,31 +451,46 @@ class SettingsMenu:
         self.audio_manager = None
         
         # ================================================================
-        # POSITION OFFSETS — shift elements from their default positions.
-        # Positive X = right, Negative X = left.
-        # Positive Y = down,  Negative Y = up.
-        # ================================================================
-        self.bg_offset_x         = 0
-        self.bg_offset_y         = 0
-        self.close_offset_x      = 0
-        self.close_offset_y      = 0
-        self.music_bar_offset_x  = 0
-        self.music_bar_offset_y  = 0
-        self.sfx_bar_offset_x    = 0
-        self.sfx_bar_offset_y    = 0
-        self.p1_faces_offset_x   = 0
-        self.p1_faces_offset_y   = 0
-        self.p2_faces_offset_x   = 0
-        self.p2_faces_offset_y   = 0
+        # ██  SETTINGS MENU — MASTER CONFIGURATION HUB  ██
+        # All positioning and sizing controls in ONE place.
         # ================================================================
         
+        # ── POSITION OFFSETS ──
+        # Shift elements from their default positions.
+        # Positive X = right, Negative X = left.
+        # Positive Y = down,  Negative Y = up.
+        self.bg_offset_x           = 0
+        self.bg_offset_y           = 0
+        self.close_offset_x        = -25
+        self.close_offset_y        = 21
+        self.music_bar_offset_x    = 0
+        self.music_bar_offset_y    = 40
+        self.sfx_bar_offset_x      = 0
+        self.sfx_bar_offset_y      = 40
+        self.p1_faces_offset_x     = 55
+        self.p1_faces_offset_y     = 60
+        self.p2_faces_offset_x     = -55
+        self.p2_faces_offset_y     = 60
+        self.p1_controls_offset_x  = -3    # The [- 1.0x +] below LEFT face box
+        self.p1_controls_offset_y  = -20
+        self.p2_controls_offset_x  = 0    # The [- 1.0x +] below RIGHT face box
+        self.p2_controls_offset_y  = -20
+        
+        # ── SIZE MULTIPLIERS ──
+        # Scale elements up/down. 1.0 = default size.
+        # Images are always scaled from the raw full-res original (never blurry).
+        self.bg_scale              = 1.0
+        self.close_scale_normal    = 0.95
+        self.close_scale_hover     = 0.89
+        self.music_bar_scale       = 0.8  # Scales the slider track width/height + knob
+        self.sfx_bar_scale         = 0.8  # Scales the slider track width/height + knob
+        self.p1_box_scale          = 1.3  # Scales the LEFT drop-face box
+        self.p2_box_scale          = 1.3  # Scales the RIGHT drop-face box
+        self.p1_controls_scale     = 1.0  # Scales the [- 1.0x +] buttons for LEFT
+        self.p2_controls_scale     = 1.0  # Scales the [- 1.0x +] buttons for RIGHT
+        
         # ================================================================
-        # SIZE MULTIPLIERS — scale images up/down from raw full-res.
-        # 1.0 = default size. Quality is always crisp.
-        # ================================================================
-        self.bg_scale            = 1.0
-        self.close_scale_normal  = 1.0
-        self.close_scale_hover   = 1.0
+        # ██  END OF CONFIGURATION HUB  ██
         # ================================================================
         
         # Main panel centered on screen — taller to fit settings, SFX bar, and drop faces
@@ -487,44 +502,40 @@ class SettingsMenu:
         close_size = 32
         self.close_rect = pygame.Rect(px + pw - close_size - 10, py + 10, close_size, close_size)
         
-        # ── Music volume slider ──
-        slider_w = 360
-        slider_h = 8
+        # ── Base slider dimensions (will be multiplied by scale at draw time) ──
+        self._base_slider_w = 360
+        self._base_slider_h = 8
+        self._base_knob_radius = 10
         music_slider_y = py + 80
-        self.music_slider_track = pygame.Rect(SCREEN_W//2 - slider_w//2, music_slider_y, slider_w, slider_h)
+        self.music_slider_track = pygame.Rect(SCREEN_W//2 - self._base_slider_w//2, music_slider_y, self._base_slider_w, self._base_slider_h)
         self.music_volume = 1.0
-        self.music_knob_radius = 10
         self.dragging_music = False
         
-        # ── SFX volume slider ──
         sfx_slider_y = music_slider_y + 70
-        self.sfx_slider_track = pygame.Rect(SCREEN_W//2 - slider_w//2, sfx_slider_y, slider_w, slider_h)
+        self.sfx_slider_track = pygame.Rect(SCREEN_W//2 - self._base_slider_w//2, sfx_slider_y, self._base_slider_w, self._base_slider_h)
         self.sfx_volume = 1.0
-        self.sfx_knob_radius = 10
         self.dragging_sfx = False
         
-        # ── Drop Faces section ──
+        # ── Base Drop Faces dimensions (will be multiplied by scale at draw time) ──
         faces_top = sfx_slider_y + 60
-        
-        # Face preview boxes (P1 left, P2 right)
-        box_size = 100
+        self._base_box_size = 100
         box_y = faces_top + 50
         
         p1_cx = px + pw//4
-        self.p1_box = pygame.Rect(p1_cx - box_size//2, box_y, box_size, box_size)
-        self.p1_remove = pygame.Rect(p1_cx - 40, box_y + box_size + 12, 80, 30)
+        self.p1_box = pygame.Rect(p1_cx - self._base_box_size//2, box_y, self._base_box_size, self._base_box_size)
+        self.p1_remove = pygame.Rect(p1_cx - 40, box_y + self._base_box_size + 12, 80, 30)
         
-        # Head size +/- buttons below each face box
-        btn_w, btn_h = 28, 28
-        size_y = box_y + box_size + 48
-        self.p1_minus = pygame.Rect(p1_cx - 48, size_y, btn_w, btn_h)
-        self.p1_plus = pygame.Rect(p1_cx + 20, size_y, btn_w, btn_h)
+        # Base head size +/- button dimensions
+        self._base_ctrl_w, self._base_ctrl_h = 28, 28
+        size_y = box_y + self._base_box_size + 48
+        self.p1_minus = pygame.Rect(p1_cx - 48, size_y, self._base_ctrl_w, self._base_ctrl_h)
+        self.p1_plus = pygame.Rect(p1_cx + 20, size_y, self._base_ctrl_w, self._base_ctrl_h)
         
         p2_cx = px + 3*pw//4
-        self.p2_box = pygame.Rect(p2_cx - box_size//2, box_y, box_size, box_size)
-        self.p2_remove = pygame.Rect(p2_cx - 40, box_y + box_size + 12, 80, 30)
-        self.p2_minus = pygame.Rect(p2_cx - 48, size_y, btn_w, btn_h)
-        self.p2_plus = pygame.Rect(p2_cx + 20, size_y, btn_w, btn_h)
+        self.p2_box = pygame.Rect(p2_cx - self._base_box_size//2, box_y, self._base_box_size, self._base_box_size)
+        self.p2_remove = pygame.Rect(p2_cx - 40, box_y + self._base_box_size + 12, 80, 30)
+        self.p2_minus = pygame.Rect(p2_cx - 48, size_y, self._base_ctrl_w, self._base_ctrl_h)
+        self.p2_plus = pygame.Rect(p2_cx + 20, size_y, self._base_ctrl_w, self._base_ctrl_h)
         
         # The actual face images (None = no custom face selected)
         self.p1_face = None
@@ -588,43 +599,71 @@ class SettingsMenu:
             pass
         return None
     
-    def _get_knob_x(self, track, volume):
-        """Calculate the X position of a slider knob."""
-        return track.x + int(volume * track.width)
+    def _get_scaled_slider(self, track, scale, ox, oy):
+        """Return a scaled + offset slider track rect and knob radius."""
+        sw = max(1, int(self._base_slider_w * scale))
+        sh = max(1, int(self._base_slider_h * scale))
+        kr = max(3, int(self._base_knob_radius * scale))
+        cx = track.centerx + ox
+        cy = track.centery + oy
+        r = pygame.Rect(cx - sw//2, cy - sh//2, sw, sh)
+        return r, kr
     
-    def _knob_rect(self, track, volume, radius):
-        """Get the clickable rectangle for a slider knob."""
-        kx = self._get_knob_x(track, volume)
-        ky = track.centery
-        return pygame.Rect(kx - radius, ky - radius, radius * 2, radius * 2)
+    def _get_scaled_box(self, box, scale, ox, oy):
+        """Return a scaled + offset face box rect, centered on the original position."""
+        sz = max(1, int(self._base_box_size * scale))
+        cx = box.centerx + ox
+        cy = box.centery + oy
+        return pygame.Rect(cx - sz//2, cy - sz//2, sz, sz)
+    
+    def _get_scaled_ctrl(self, minus_r, plus_r, ctrl_scale, ox, oy):
+        """Return scaled + offset minus/plus button rects."""
+        cw = max(1, int(self._base_ctrl_w * ctrl_scale))
+        ch = max(1, int(self._base_ctrl_h * ctrl_scale))
+        m_cx = minus_r.centerx + ox
+        m_cy = minus_r.centery + oy
+        p_cx = plus_r.centerx + ox
+        p_cy = plus_r.centery + oy
+        sm = pygame.Rect(m_cx - cw//2, m_cy - ch//2, cw, ch)
+        sp = pygame.Rect(p_cx - cw//2, p_cy - ch//2, cw, ch)
+        return sm, sp
     
     def handle_event(self, event) -> str:
         """Handle clicks on close button, volume sliders, face boxes, remove/size buttons.
         Returns 'done' when the player closes the panel, otherwise None."""
         
         if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
-            # Close button
-            if self.close_rect.collidepoint(event.pos):
+            # Close button (with offset)
+            close_hit = self.close_rect.move(self.close_offset_x, self.close_offset_y)
+            if close_hit.collidepoint(event.pos):
                 if self.audio_manager:
                     self.audio_manager.play_sound("menu_click")
                 return "done"
             
-            # Music slider — start dragging if clicked on knob or track
-            music_knob = self._knob_rect(self.music_slider_track, self.music_volume, self.music_knob_radius)
-            if music_knob.collidepoint(event.pos) or self.music_slider_track.collidepoint(event.pos):
+            # Music slider — use scaled track for hit detection
+            m_track, m_kr = self._get_scaled_slider(self.music_slider_track, self.music_bar_scale,
+                                                     self.music_bar_offset_x, self.music_bar_offset_y)
+            m_knob_x = m_track.x + int(self.music_volume * m_track.width)
+            m_knob_rect = pygame.Rect(m_knob_x - m_kr, m_track.centery - m_kr, m_kr*2, m_kr*2)
+            if m_knob_rect.collidepoint(event.pos) or m_track.collidepoint(event.pos):
                 self.dragging_music = True
-                self._update_music_from_mouse(event.pos[0])
+                self._update_music_from_mouse(event.pos[0], m_track)
                 return None
             
-            # SFX slider — start dragging
-            sfx_knob = self._knob_rect(self.sfx_slider_track, self.sfx_volume, self.sfx_knob_radius)
-            if sfx_knob.collidepoint(event.pos) or self.sfx_slider_track.collidepoint(event.pos):
+            # SFX slider — use scaled track for hit detection
+            s_track, s_kr = self._get_scaled_slider(self.sfx_slider_track, self.sfx_bar_scale,
+                                                     self.sfx_bar_offset_x, self.sfx_bar_offset_y)
+            s_knob_x = s_track.x + int(self.sfx_volume * s_track.width)
+            s_knob_rect = pygame.Rect(s_knob_x - s_kr, s_track.centery - s_kr, s_kr*2, s_kr*2)
+            if s_knob_rect.collidepoint(event.pos) or s_track.collidepoint(event.pos):
                 self.dragging_sfx = True
-                self._update_sfx_from_mouse(event.pos[0])
+                self._update_sfx_from_mouse(event.pos[0], s_track)
                 return None
             
-            # Face upload boxes
-            if self.p1_box.collidepoint(event.pos):
+            # Face upload boxes (scaled)
+            p1_sbox = self._get_scaled_box(self.p1_box, self.p1_box_scale,
+                                            self.p1_faces_offset_x, self.p1_faces_offset_y)
+            if p1_sbox.collidepoint(event.pos):
                 if self.audio_manager:
                     self.audio_manager.play_sound("menu_click")
                 face = self._open_file_dialog()
@@ -632,7 +671,9 @@ class SettingsMenu:
                     self.p1_face = face
                 return None
             
-            if self.p2_box.collidepoint(event.pos):
+            p2_sbox = self._get_scaled_box(self.p2_box, self.p2_box_scale,
+                                            self.p2_faces_offset_x, self.p2_faces_offset_y)
+            if p2_sbox.collidepoint(event.pos):
                 if self.audio_manager:
                     self.audio_manager.play_sound("menu_click")
                 face = self._open_file_dialog()
@@ -640,40 +681,53 @@ class SettingsMenu:
                     self.p2_face = face
                 return None
             
-            # Remove buttons
-            if self.p1_remove.collidepoint(event.pos) and self.p1_face is not None:
+            # Remove buttons (shifted with face offsets)
+            p1_rm = self.p1_remove.move(self.p1_faces_offset_x, self.p1_faces_offset_y)
+            if p1_rm.collidepoint(event.pos) and self.p1_face is not None:
                 if self.audio_manager:
                     self.audio_manager.play_sound("menu_click")
                 self.p1_face = None
                 return None
             
-            if self.p2_remove.collidepoint(event.pos) and self.p2_face is not None:
+            p2_rm = self.p2_remove.move(self.p2_faces_offset_x, self.p2_faces_offset_y)
+            if p2_rm.collidepoint(event.pos) and self.p2_face is not None:
                 if self.audio_manager:
                     self.audio_manager.play_sound("menu_click")
                 self.p2_face = None
                 return None
             
-            # Head size adjustment (clamp between 0.5x and 2.0x)
-            if self.p1_minus.collidepoint(event.pos):
+            # Head size controls (scaled + offset)
+            p1_sm, p1_sp = self._get_scaled_ctrl(self.p1_minus, self.p1_plus, self.p1_controls_scale,
+                                                  self.p1_faces_offset_x + self.p1_controls_offset_x,
+                                                  self.p1_faces_offset_y + self.p1_controls_offset_y)
+            if p1_sm.collidepoint(event.pos):
                 self.p1_head_base = max(0.5, round(self.p1_head_base - 0.1, 1))
                 return None
-            if self.p1_plus.collidepoint(event.pos):
+            if p1_sp.collidepoint(event.pos):
                 self.p1_head_base = min(2.0, round(self.p1_head_base + 0.1, 1))
                 return None
-            if self.p2_minus.collidepoint(event.pos):
+            
+            p2_sm, p2_sp = self._get_scaled_ctrl(self.p2_minus, self.p2_plus, self.p2_controls_scale,
+                                                  self.p2_faces_offset_x + self.p2_controls_offset_x,
+                                                  self.p2_faces_offset_y + self.p2_controls_offset_y)
+            if p2_sm.collidepoint(event.pos):
                 self.p2_head_base = max(0.5, round(self.p2_head_base - 0.1, 1))
                 return None
-            if self.p2_plus.collidepoint(event.pos):
+            if p2_sp.collidepoint(event.pos):
                 self.p2_head_base = min(2.0, round(self.p2_head_base + 0.1, 1))
                 return None
         
-        # Dragging sliders
+        # Dragging sliders (use scaled tracks for accurate mapping)
         if event.type == pygame.MOUSEMOTION:
             if self.dragging_music:
-                self._update_music_from_mouse(event.pos[0])
+                m_track, _ = self._get_scaled_slider(self.music_slider_track, self.music_bar_scale,
+                                                     self.music_bar_offset_x, self.music_bar_offset_y)
+                self._update_music_from_mouse(event.pos[0], m_track)
                 return None
             if self.dragging_sfx:
-                self._update_sfx_from_mouse(event.pos[0])
+                s_track, _ = self._get_scaled_slider(self.sfx_slider_track, self.sfx_bar_scale,
+                                                     self.sfx_bar_offset_x, self.sfx_bar_offset_y)
+                self._update_sfx_from_mouse(event.pos[0], s_track)
                 return None
         
         # Release slider knobs
@@ -691,51 +745,40 @@ class SettingsMenu:
         
         return None
     
-    def _update_music_from_mouse(self, mouse_x):
-        """Recalculate music volume from mouse X position on the slider track."""
-        rel = mouse_x - self.music_slider_track.x
-        self.music_volume = max(0.0, min(1.0, rel / self.music_slider_track.width))
+    def _update_music_from_mouse(self, mouse_x, scaled_track):
+        """Recalculate music volume from mouse X position on the scaled slider track."""
+        rel = mouse_x - scaled_track.x
+        self.music_volume = max(0.0, min(1.0, rel / max(1, scaled_track.width)))
         if self.audio_manager:
             self.audio_manager.set_music_volume(self.music_volume)
     
-    def _update_sfx_from_mouse(self, mouse_x):
-        """Recalculate SFX volume from mouse X position on the slider track."""
-        rel = mouse_x - self.sfx_slider_track.x
-        self.sfx_volume = max(0.0, min(1.0, rel / self.sfx_slider_track.width))
+    def _update_sfx_from_mouse(self, mouse_x, scaled_track):
+        """Recalculate SFX volume from mouse X position on the scaled slider track."""
+        rel = mouse_x - scaled_track.x
+        self.sfx_volume = max(0.0, min(1.0, rel / max(1, scaled_track.width)))
         if self.audio_manager:
             self.audio_manager.set_sfx_volume(self.sfx_volume)
     
-    def _draw_slider(self, screen, mouse, track, volume, knob_radius, dragging, label, ox, oy):
-        """Draw a single light brown slider with label, track, filled portion, knob, and percentage."""
-        # Apply offset
-        shifted_track = track.move(ox, oy)
-        
-        # Label above the bar
-        lbl = self._font_section.render(label, True, (220, 200, 160))
-        screen.blit(lbl, lbl.get_rect(centerx=shifted_track.centerx, bottom=shifted_track.y - 8))
+    def _draw_slider(self, screen, track, volume, dragging, scale, ox, oy):
+        """Draw a single light brown slider (no label, no percentage text)."""
+        st, kr = self._get_scaled_slider(track, scale, ox, oy)
         
         # Track background (dark brown)
-        pygame.draw.rect(screen, (80, 65, 45), shifted_track, border_radius=4)
+        pygame.draw.rect(screen, (80, 65, 45), st, border_radius=4)
         # Filled portion (light brown)
-        filled_w = int(volume * shifted_track.width)
+        filled_w = int(volume * st.width)
         if filled_w > 0:
-            filled_rect = pygame.Rect(shifted_track.x, shifted_track.y, filled_w, shifted_track.height)
+            filled_rect = pygame.Rect(st.x, st.y, filled_w, st.height)
             pygame.draw.rect(screen, (195, 155, 95), filled_rect, border_radius=4)
         # Knob
-        kx = shifted_track.x + int(volume * shifted_track.width)
-        ky = shifted_track.centery
+        kx = st.x + int(volume * st.width)
+        ky = st.centery
         knob_color = (230, 195, 130) if dragging else (195, 155, 95)
-        pygame.draw.circle(screen, knob_color, (kx, ky), knob_radius)
-        pygame.draw.circle(screen, (240, 220, 180), (kx, ky), knob_radius, 2)
-        
-        # Volume percentage text
-        vol_pct = self._font_small.render(f"{int(volume * 100)}%", True, (180, 170, 150))
-        screen.blit(vol_pct, vol_pct.get_rect(centerx=shifted_track.centerx, top=shifted_track.bottom + 6))
+        pygame.draw.circle(screen, knob_color, (kx, ky), kr)
+        pygame.draw.circle(screen, (240, 220, 180), (kx, ky), kr, 2)
     
     def draw(self, screen, video_frame=None, bg_image=None):
-        """Draw the settings popup over the darkened background.
-        video_frame: the current looping video frame (preferred).
-        bg_image: static fallback background."""
+        """Draw the settings popup over the darkened background."""
         
         # Draw the background (video or static)
         if video_frame is not None:
@@ -760,9 +803,7 @@ class SettingsMenu:
             pygame.draw.rect(screen, (35, 30, 25), self.panel_rect, border_radius=16)
             pygame.draw.rect(screen, (180, 140, 60), self.panel_rect, 3, border_radius=16)
         
-        # Title
-        title = self.font_large.render("SETTINGS", True, (255, 210, 80))
-        screen.blit(title, title.get_rect(centerx=SCREEN_W//2, y=self.panel_rect.y + 16))
+        # (No "SETTINGS" title — removed per user request)
         
         # ── Close (X) button — custom image or fallback ──
         close_cx = self.close_rect.centerx + self.close_offset_x
@@ -782,59 +823,55 @@ class SettingsMenu:
             x_text = self._font_btn.render("X", True, (255, 255, 255))
             screen.blit(x_text, x_text.get_rect(center=shifted_close.center))
         
-        # Update close rect for click detection (with offset)
-        self._close_hit = self.close_rect.move(self.close_offset_x, self.close_offset_y)
+        # ── Music Volume Slider (light brown, no label, no percentage) ──
+        self._draw_slider(screen, self.music_slider_track, self.music_volume,
+                          self.dragging_music, self.music_bar_scale,
+                          self.music_bar_offset_x, self.music_bar_offset_y)
         
-        # ── Music Volume Slider (light brown) ──
-        self._draw_slider(screen, mouse, self.music_slider_track, self.music_volume,
-                          self.music_knob_radius, self.dragging_music,
-                          "Music Volume", self.music_bar_offset_x, self.music_bar_offset_y)
+        # ── SFX Volume Slider (light brown, no label, no percentage) ──
+        self._draw_slider(screen, self.sfx_slider_track, self.sfx_volume,
+                          self.dragging_sfx, self.sfx_bar_scale,
+                          self.sfx_bar_offset_x, self.sfx_bar_offset_y)
         
-        # ── SFX Volume Slider (light brown) ──
-        self._draw_slider(screen, mouse, self.sfx_slider_track, self.sfx_volume,
-                          self.sfx_knob_radius, self.dragging_sfx,
-                          "Sound Effects", self.sfx_bar_offset_x, self.sfx_bar_offset_y)
-        
-        # ── Drop Faces section title ──
+        # ── Drop Faces section title (#dcc8a0) ──
         faces_title_y = self.sfx_slider_track.y + self.sfx_bar_offset_y + 40
-        df_title = self._font_section.render("Drop Faces", True, (255, 210, 80))
+        df_title = self._font_section.render("Drop Faces", True, (220, 200, 160))
         screen.blit(df_title, df_title.get_rect(centerx=SCREEN_W//2, y=faces_title_y))
         
-        sub = self._font_small.render("Click a box to select a custom face image", True, (180, 170, 150))
-        screen.blit(sub, sub.get_rect(centerx=SCREEN_W//2, y=faces_title_y + 28))
+        # (No subtitle — removed per user request)
         
         # ── Player face zones ──
-        for label, box, face, remove_rect, color, ox, oy in [
-            ("P1", self.p1_box, self.p1_face, self.p1_remove, (60, 120, 220),
+        # Border color: #dcc8a0 = (220, 200, 160)
+        border_color = (220, 200, 160)
+        for label_text, box, face, remove_rect, box_scale, ox, oy in [
+            ("LEFT", self.p1_box, self.p1_face, self.p1_remove, self.p1_box_scale,
              self.p1_faces_offset_x, self.p1_faces_offset_y),
-            ("P2", self.p2_box, self.p2_face, self.p2_remove, (220, 60, 60),
+            ("RIGHT", self.p2_box, self.p2_face, self.p2_remove, self.p2_box_scale,
              self.p2_faces_offset_x, self.p2_faces_offset_y),
         ]:
-            shifted_box = box.move(ox, oy)
+            scaled_box = self._get_scaled_box(box, box_scale, ox, oy)
             shifted_remove = remove_rect.move(ox, oy)
             
-            # Player label
-            lbl = self.font_medium.render(label, True, color)
-            screen.blit(lbl, lbl.get_rect(centerx=shifted_box.centerx, bottom=shifted_box.y - 8))
+            # Label above box ("LEFT" / "RIGHT")
+            lbl = self.font_medium.render(label_text, True, border_color)
+            screen.blit(lbl, lbl.get_rect(centerx=scaled_box.centerx, bottom=scaled_box.y - 8))
             
             # Drop zone box — highlights on hover
-            hover_box = shifted_box.collidepoint(mouse)
+            hover_box = scaled_box.collidepoint(mouse)
             box_bg = (60, 55, 45) if not hover_box else (80, 75, 55)
-            pygame.draw.rect(screen, box_bg, shifted_box, border_radius=10)
-            pygame.draw.rect(screen, color, shifted_box, 2, border_radius=10)
+            pygame.draw.rect(screen, box_bg, scaled_box, border_radius=10)
+            pygame.draw.rect(screen, border_color, scaled_box, 2, border_radius=10)
             
             if face is not None:
-                # Show preview of the selected face image
                 fw, fh = face.get_size()
-                pmax = shifted_box.width - 16
+                pmax = scaled_box.width - 16
                 pscale = min(pmax / fw, pmax / fh)
                 pw2, ph2 = int(fw * pscale), int(fh * pscale)
                 preview = pygame.transform.smoothscale(face, (max(1, pw2), max(1, ph2)))
-                screen.blit(preview, preview.get_rect(center=shifted_box.center))
+                screen.blit(preview, preview.get_rect(center=scaled_box.center))
             else:
-                # Big "+" icon when no face is selected yet
                 plus = self._font_plus.render("+", True, (120, 110, 90))
-                screen.blit(plus, plus.get_rect(center=shifted_box.center))
+                screen.blit(plus, plus.get_rect(center=scaled_box.center))
             
             # Remove button (only shown when a face is selected)
             if face is not None:
@@ -845,34 +882,35 @@ class SettingsMenu:
                 rm_text = self._font_small.render("Remove", True, (255, 220, 220))
                 screen.blit(rm_text, rm_text.get_rect(center=shifted_remove.center))
         
-        # ── Head size +/- controls ──
-        for minus_r, plus_r, scale_val, ox, oy in [
-            (self.p1_minus, self.p1_plus, self.p1_head_base,
-             self.p1_faces_offset_x, self.p1_faces_offset_y),
-            (self.p2_minus, self.p2_plus, self.p2_head_base,
-             self.p2_faces_offset_x, self.p2_faces_offset_y),
+        # ── Head size +/- controls (independently scaled and positioned) ──
+        for minus_r, plus_r, scale_val, ctrl_scale, fox, foy, cox, coy in [
+            (self.p1_minus, self.p1_plus, self.p1_head_base, self.p1_controls_scale,
+             self.p1_faces_offset_x, self.p1_faces_offset_y,
+             self.p1_controls_offset_x, self.p1_controls_offset_y),
+            (self.p2_minus, self.p2_plus, self.p2_head_base, self.p2_controls_scale,
+             self.p2_faces_offset_x, self.p2_faces_offset_y,
+             self.p2_controls_offset_x, self.p2_controls_offset_y),
         ]:
-            shifted_minus = minus_r.move(ox, oy)
-            shifted_plus = plus_r.move(ox, oy)
+            sm, sp = self._get_scaled_ctrl(minus_r, plus_r, ctrl_scale, fox + cox, foy + coy)
             
-            hover_m = shifted_minus.collidepoint(mouse)
+            hover_m = sm.collidepoint(mouse)
             c_m = (100, 80, 60) if hover_m else (70, 55, 40)
-            pygame.draw.rect(screen, c_m, shifted_minus, border_radius=6)
-            pygame.draw.rect(screen, (160, 130, 80), shifted_minus, 1, border_radius=6)
+            pygame.draw.rect(screen, c_m, sm, border_radius=6)
+            pygame.draw.rect(screen, (160, 130, 80), sm, 1, border_radius=6)
             mt = self._font_btn.render("-", True, (255, 230, 180))
-            screen.blit(mt, mt.get_rect(center=shifted_minus.center))
+            screen.blit(mt, mt.get_rect(center=sm.center))
             
-            hover_p = shifted_plus.collidepoint(mouse)
+            hover_p = sp.collidepoint(mouse)
             c_p = (100, 80, 60) if hover_p else (70, 55, 40)
-            pygame.draw.rect(screen, c_p, shifted_plus, border_radius=6)
-            pygame.draw.rect(screen, (160, 130, 80), shifted_plus, 1, border_radius=6)
+            pygame.draw.rect(screen, c_p, sp, border_radius=6)
+            pygame.draw.rect(screen, (160, 130, 80), sp, 1, border_radius=6)
             pt = self._font_btn.render("+", True, (255, 230, 180))
-            screen.blit(pt, pt.get_rect(center=shifted_plus.center))
+            screen.blit(pt, pt.get_rect(center=sp.center))
             
             # Current scale value displayed between the buttons
             sv = self._font_small.render(f"{scale_val:.1f}x", True, (200, 180, 140))
-            sx = (shifted_minus.right + shifted_plus.left) // 2
-            sy = shifted_minus.centery
+            sx = (sm.right + sp.left) // 2
+            sy = sm.centery
             screen.blit(sv, sv.get_rect(center=(sx, sy)))
 
 
