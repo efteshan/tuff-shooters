@@ -15,7 +15,9 @@ from src.constants import (
     GIF_KO_STRIP, GIF_KO_FRAMES, IMG_MENU_BG, MAX_AMMO,
     KNOCKBACK_FORCE, BOX_X,
     RESPAWN_DELAY, INVULN_DURATION, MAX_KILLS_TO_WIN,
-    HEAD_SIZE_BASE, HEAD_SIZE_STEP
+    HEAD_SIZE_BASE, HEAD_SIZE_STEP,
+    CLASSIC_LIVES, MATCH_TIME_LIMIT,
+    JOY_BTN_Y
 )
 from src.camera import Camera
 from src.player import Player
@@ -61,6 +63,7 @@ class Game:
         self._init_menu_video()
 
         self.head_war_mode = False  # True = head-streak + respawn, False = normal rounds
+        self.is_draw = False        # True when timer expires with tied lives
         self.ko_winner_id = 0  # 1 or 2 — which player won
         self.ko_timer = 0.0    # countdown for K.O. screen
         
@@ -141,6 +144,9 @@ class Game:
 
         self.p1_score = 0
         self.p2_score = 0
+        self.p1_lives = CLASSIC_LIVES
+        self.p2_lives = CLASSIC_LIVES
+        self.match_timer = MATCH_TIME_LIMIT
         
         # Pause button rect
         self.pause_btn_rect = pygame.Rect(SCREEN_W//2 - 50, 10, 100, 36)
@@ -327,12 +333,12 @@ class Game:
                 self.state = "STATE_PAUSED"
                 self.hud.is_paused = True
                 
-            if getattr(event, 'type', None) == pygame.JOYBUTTONDOWN and event.button == 3:
+            if getattr(event, 'type', None) == pygame.JOYBUTTONDOWN and event.button == JOY_BTN_Y:
                 self.state = "STATE_PAUSED"
                 self.hud.is_paused = True
         
         elif self.state == "STATE_PAUSED":
-            if getattr(event, 'type', None) == pygame.JOYBUTTONDOWN and event.button == 3:
+            if getattr(event, 'type', None) == pygame.JOYBUTTONDOWN and event.button == JOY_BTN_Y:
                 self.state = "STATE_PLAYING"
                 self.hud.is_paused = False
                 return
@@ -435,6 +441,14 @@ class Game:
 
     def _update_playing(self, dt):
         """Main gameplay tick: move players, check collisions, handle bullets, etc."""
+
+        # ── Match timer countdown ──
+        if MATCH_TIME_LIMIT > 0:
+            self.match_timer -= dt
+            if self.match_timer <= 0:
+                self.match_timer = 0
+                self._handle_timer_expiry()
+                return
 
         keys = pygame.key.get_pressed()
         
@@ -612,8 +626,36 @@ class Game:
                 bullet.kill()
                 bullet.alive = False
     
+    def _handle_timer_expiry(self):
+        """Called when the match timer hits zero. Determines winner by remaining lives/streaks."""
+        if self.head_war_mode:
+            # Head Wars: bigger head (higher streak) wins
+            if self.p1.head_streak > self.p2.head_streak:
+                self.ko_winner_id = 1
+            elif self.p2.head_streak > self.p1.head_streak:
+                self.ko_winner_id = 2
+            else:
+                # Tied streaks = draw
+                self.ko_winner_id = 0
+                self.is_draw = True
+        else:
+            # Classic: more lives remaining wins
+            if self.p1_lives > self.p2_lives:
+                self.ko_winner_id = 1
+            elif self.p2_lives > self.p1_lives:
+                self.ko_winner_id = 2
+            else:
+                self.ko_winner_id = 0
+                self.is_draw = True
+
+        self.ko_timer = 5.0
+        self.ko_screen.reset()
+        self.state = "STATE_KO"
+        if not self.is_draw:
+            self.audio_manager.play_sound("win_screen")
+
     def _handle_kill(self, victim_id, is_self_death=False):
-        """Called when a player dies. Updates scores, head streaks, and triggers K.O. or game over."""
+        """Called when a player dies. Updates scores, lives, head streaks, and triggers K.O. or game over."""
         victim = self.p1 if victim_id == 1 else self.p2
         killer = self.p2 if victim_id == 1 else self.p1
         
@@ -646,24 +688,26 @@ class Game:
             # Respawn victim after delay
             victim.respawn_timer = RESPAWN_DELAY
         else:
-            # ── NORMAL PLAY: classic round scoring, no head growth ──
-            # All deaths (including self-death) count as a point for opponent
+            # ── CLASSIC: lives-based scoring ──
+            # All deaths count — deduct a life from the victim
             if victim_id == 1:
+                self.p1_lives -= 1
                 self.p2_score += 1
             else:
+                self.p2_lives -= 1
                 self.p1_score += 1
             
-            # Respawn victim after delay
-            victim.respawn_timer = RESPAWN_DELAY
-            
-            # Check win at 3 total score
-            if self.p1_score >= 3 or self.p2_score >= 3:
-                self.ko_winner_id = 1 if self.p1_score >= 3 else 2
+            # Check if victim is out of lives
+            if self.p1_lives <= 0 or self.p2_lives <= 0:
+                self.ko_winner_id = 2 if self.p1_lives <= 0 else 1
                 self.ko_timer = 5.0
                 self.ko_screen.reset()
                 self.state = "STATE_KO"
                 self.audio_manager.play_sound("win_screen")
                 return
+            
+            # Still has lives — respawn after delay
+            victim.respawn_timer = RESPAWN_DELAY
     
     def _respawn_player(self, player):
         """Bring a dead player back to life at their start position with brief invulnerability."""
@@ -786,6 +830,12 @@ class Game:
         self.p2.update_rect()
         self.p2.body.current_head_scale = self.p2_head_base
         
+        # Reset lives and match timer
+        self.p1_lives = CLASSIC_LIVES
+        self.p2_lives = CLASSIC_LIVES
+        self.match_timer = MATCH_TIME_LIMIT
+        self.is_draw = False
+
         # Clear all active projectiles and pickups
         self.bullet_group.empty()
         # Reset destructible box
@@ -857,7 +907,15 @@ class Game:
         self._draw_playing()
         
         # Draw HUD on real screen
-        self.hud.draw(self.screen, self.p1, self.p2)
+        max_lives = CLASSIC_LIVES if not self.head_war_mode else MAX_KILLS_TO_WIN
+        self.hud.draw(self.screen, self.p1, self.p2,
+                      p1_lives=self.p1_lives,
+                      p2_lives=self.p2_lives,
+                      max_lives=max_lives,
+                      head_war_mode=self.head_war_mode,
+                      p1_head_streak=self.p1.head_streak,
+                      p2_head_streak=self.p2.head_streak,
+                      match_timer=self.match_timer)
         
         # Draw overlays
         if self.state == "STATE_PAUSED":
@@ -902,7 +960,12 @@ class Game:
                 my = SCREEN_H // 2 - main_surf.get_height() // 2 - 20
                 self.screen.blit(main_surf, (mx, my))
         elif self.state == "STATE_GAME_OVER":
-            winner_name = "PLAYER 1" if self.p1_score > self.p2_score else "PLAYER 2"
+            if self.is_draw:
+                winner_name = "DRAW"
+            elif self.p1_score > self.p2_score:
+                winner_name = "PLAYER 1"
+            else:
+                winner_name = "PLAYER 2"
             self.game_over_menu.draw(self.screen, winner_name)
     
     def _draw_playing(self):

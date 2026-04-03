@@ -1,7 +1,12 @@
-# src/ui.py — In-game HUD (health bars, ammo bars, pause button) and K.O. screen overlay.
+# src/ui.py — In-game HUD (health bars, ammo bars, lives hearts, match timer, pause button)
+# and K.O. screen overlay.
 
+import math
 import pygame
-from src.constants import SCREEN_W, SCREEN_H, KO_DISPLAY_DURATION
+from src.constants import (
+    SCREEN_W, SCREEN_H, KO_DISPLAY_DURATION,
+    MATCH_TIME_LIMIT, MAX_KILLS_TO_WIN
+)
 from src.particles import GifPlayer
 
 
@@ -20,6 +25,13 @@ class HUD:
         # Pre-build the tiny pixel art icons that sit next to each bar
         self.heart_icon  = self._make_heart_icon()
         self.bullet_icon = self._make_bullet_icon()
+
+        # Smaller heart for the lives row (14x12 — exact same shape, scaled down)
+        self.life_heart = pygame.transform.smoothscale(self.heart_icon, (14, 12))
+        self.empty_heart = self._make_empty_heart(14, 12)
+
+        # High-quality timer font — crisp and readable
+        self.timer_font = pygame.font.Font(None, 28)
 
         # Try to load custom pause/resume button images, fall back to procedural wood buttons
         self.btn_pause  = self._load_btn(self.PAUSE_BTN_PATH,  "pause")
@@ -232,9 +244,70 @@ class HUD:
                 shine.fill((255, 255, 255, 70))
                 screen.blit(shine, (rx + 2, bar_y + 2))
 
+    # ── EMPTY HEART (lost life) ──────────────────────────────────
+
+    def _make_empty_heart(self, w, h):
+        """Dark, desaturated heart outline representing a lost life."""
+        base = self._make_heart_icon()
+        grey = pygame.Surface(base.get_size(), pygame.SRCALPHA)
+        for y in range(base.get_height()):
+            for x in range(base.get_width()):
+                r, g, b, a = base.get_at((x, y))
+                if a > 0:
+                    avg = (r + g + b) // 3
+                    grey.set_at((x, y), (avg // 3, avg // 4, avg // 4, 90))
+        return pygame.transform.smoothscale(grey, (w, h))
+
+    # ── LIVES HEARTS ────────────────────────────────────────────
+
+    def _draw_lives(self, screen, x, y, current, maximum, align_right=False):
+        """Draw a row of small hearts: filled for remaining lives, dim for lost ones.
+        align_right=True draws hearts expanding leftward (for P2 side)."""
+        gap = 3
+        hw = self.life_heart.get_width()
+        total_w = maximum * hw + (maximum - 1) * gap
+
+        for i in range(maximum):
+            if align_right:
+                hx = x + total_w - (i + 1) * (hw + gap)
+            else:
+                hx = x + i * (hw + gap)
+            if i < current:
+                screen.blit(self.life_heart, (hx, y))
+            else:
+                screen.blit(self.empty_heart, (hx, y))
+
+    # ── MATCH TIMER ─────────────────────────────────────────────
+
+    def _draw_timer(self, screen, seconds_left, x, y):
+        """Draw a polished MM:SS timer. Pulses red when under 30s."""
+        minutes = int(seconds_left) // 60
+        secs    = int(seconds_left) % 60
+        text    = f"{minutes:02d}:{secs:02d}"
+
+        # Color: clean white normally, pulsing red when critical
+        if seconds_left <= 30:
+            pulse = 0.5 + 0.5 * math.sin(seconds_left * 6)
+            r = int(255)
+            g = int(60 * pulse)
+            b = int(40 * pulse)
+            color = (r, g, b)
+        else:
+            color = (240, 240, 240)
+
+        # Render crisp text with a subtle dark shadow for contrast
+        shadow_surf = self.timer_font.render(text, True, (15, 10, 10))
+        main_surf   = self.timer_font.render(text, True, color)
+        screen.blit(shadow_surf, (x + 1, y + 1))
+        screen.blit(main_surf,   (x, y))
+
     # ── MAIN DRAW ───────────────────────────────────────────────
 
-    def draw(self, screen, p1, p2):
+    def draw(self, screen, p1, p2,
+             p1_lives=0, p2_lives=0, max_lives=0,
+             head_war_mode=False,
+             p1_head_streak=0, p2_head_streak=0,
+             match_timer=0.0):
         """Draw all HUD elements for both players."""
         bar_w  = 200
         bar_h  = 16
@@ -245,6 +318,7 @@ class HUD:
 
         row1_y = 14   # Health bar row
         row2_y = 38   # Ammo bar row
+        row3_y = 60   # Lives hearts row (below ammo bar)
 
         # P1 bars (top-left corner)
         p1_icon_x  = 12
@@ -269,6 +343,17 @@ class HUD:
             p1_ammo_icon_x, row2_y, p1_ammo_bar_x, row2_y,
             bar_w, bar_h, p1_ammo_frac)
 
+        # P1 lives hearts
+        if max_lives > 0:
+            if head_war_mode:
+                # In Head Wars: show how many lives P1 has left
+                # (opponent's streak determines how many are gone)
+                hw_max = MAX_KILLS_TO_WIN
+                hw_cur = max(0, hw_max - p2_head_streak)
+                self._draw_lives(screen, p1_ammo_bar_x, row3_y, hw_cur, hw_max)
+            else:
+                self._draw_lives(screen, p1_ammo_bar_x, row3_y, p1_lives, max_lives)
+
         # P2 bars (top-right corner, mirrored)
         p2_heart_icon_x  = SCREEN_W - 12 - self.heart_icon.get_width()
         p2_bar_x         = p2_heart_icon_x - icon_gap - bar_w
@@ -290,6 +375,29 @@ class HUD:
         self._draw_bar(screen, self.bullet_icon,
             p2_bullet_icon_x, row2_y, p2_ammo_bar_x, row2_y,
             bar_w, bar_h, p2_ammo_frac, flipped=True)
+
+        # P2 lives hearts (right-aligned, expanding leftward)
+        if max_lives > 0:
+            if head_war_mode:
+                hw_max = MAX_KILLS_TO_WIN
+                hw_cur = max(0, hw_max - p1_head_streak)
+                hw_total_w = hw_max * self.life_heart.get_width() + (hw_max - 1) * 3
+                self._draw_lives(screen,
+                    p2_ammo_bar_x + bar_w - hw_total_w, row3_y,
+                    hw_cur, hw_max, align_right=False)
+            else:
+                lives_total_w = max_lives * self.life_heart.get_width() + (max_lives - 1) * 3
+                self._draw_lives(screen,
+                    p2_ammo_bar_x + bar_w - lives_total_w, row3_y,
+                    p2_lives, max_lives, align_right=False)
+
+        # Match timer — positioned to the left of P2's health bar with stable gap
+        if MATCH_TIME_LIMIT > 0:
+            timer_text = f"{int(match_timer) // 60:02d}:{int(match_timer) % 60:02d}"
+            tw = self.timer_font.size(timer_text)[0]
+            timer_x = p2_bar_x - tw - 18   # 18px gap from P2's health bar
+            timer_y = row1_y + 1            # vertically aligned with health bar
+            self._draw_timer(screen, match_timer, timer_x, timer_y)
 
         # Pause/Resume button centered at the top of screen
         btn = self.btn_pause if not self.is_paused else self.btn_resume

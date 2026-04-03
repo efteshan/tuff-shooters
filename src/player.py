@@ -140,8 +140,8 @@ class Player(PhysicsObject, pygame.sprite.Sprite):
                     if j.get_numaxes() > 4 and j.get_axis(4) > 0.1: return True
                     if j.get_numbuttons() > 0 and j.get_button(0): return True
                 elif action == "knife":
-                    # B/Circle (Button 1)
-                    if j.get_numbuttons() > 1 and j.get_button(1): return True
+                    # L1/Left Bumper (Button 4) — stabbing
+                    if j.get_numbuttons() > 4 and j.get_button(4): return True
             except pygame.error:
                 pass
         return False

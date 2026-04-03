@@ -1,8 +1,14 @@
 # src/menu.py — All menu screens: main menu, pause menu, game over menu, and settings.
+# Supports both mouse and gamepad (D-Pad navigation, A/X/Y button actions).
 
 import pygame
 import os
-from src.constants import SCREEN_W, SCREEN_H
+from src.constants import (
+    SCREEN_W, SCREEN_H,
+    JOY_BTN_A, JOY_BTN_B, JOY_BTN_X, JOY_BTN_Y,
+    JOY_BTN_L1, JOY_BTN_R1, JOY_AXIS_L2, JOY_AXIS_R2,
+    JOY_TRIGGER_THRESHOLD
+)
 class MainMenu:
     """Title screen with Play, Head War, Online, Settings, and Exit buttons.
     Background is a video frame passed in each draw call instead of a static image.
@@ -13,6 +19,11 @@ class MainMenu:
         self.font_large = font_large
         self.font_medium = font_medium
         self.audio_manager = None
+        
+        # Controller navigation state
+        self.selected_index = -1  # -1 = no controller selection active
+        self._button_names = ["play", "head_war", "online", "settings", "exit"]
+        self._button_count = 5
         
         # ================================================================
         # BUTTON SIZE CONFIGURATION
@@ -147,8 +158,10 @@ class MainMenu:
         return pygame.transform.smoothscale(raw_surface, (final_w, final_h))
     
     def handle_event(self, event) -> str:
-        """Check if a menu button was clicked. Returns the button name or None."""
+        """Check if a menu button was clicked or selected via controller. Returns the button name or None."""
+        # Mouse click
         if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+            self.selected_index = -1  # reset controller highlight on mouse click
             if self.play_rect.collidepoint(event.pos):
                 if self.audio_manager:
                     self.audio_manager.play_sound("menu_click")
@@ -169,6 +182,28 @@ class MainMenu:
                 if self.audio_manager:
                     self.audio_manager.play_sound("menu_click")
                 return "exit"
+        
+        # Controller D-Pad navigation
+        if event.type == pygame.JOYHATMOTION:
+            hat_x, hat_y = event.value
+            if hat_y == -1:  # D-Pad Down
+                if self.selected_index < 0:
+                    self.selected_index = 0
+                else:
+                    self.selected_index = (self.selected_index + 1) % self._button_count
+            elif hat_y == 1:  # D-Pad Up
+                if self.selected_index < 0:
+                    self.selected_index = self._button_count - 1
+                else:
+                    self.selected_index = (self.selected_index - 1) % self._button_count
+        
+        # Controller A button — confirm selection
+        if event.type == pygame.JOYBUTTONDOWN and event.button == JOY_BTN_A:
+            if self.selected_index >= 0:
+                if self.audio_manager:
+                    self.audio_manager.play_sound("menu_click")
+                return self._button_names[self.selected_index]
+        
         return None
     
     def draw(self, screen, video_frame=None):
@@ -180,28 +215,30 @@ class MainMenu:
         
         mouse_pos = pygame.mouse.get_pos()
         
-        # Draw each button — custom image if loaded, fallback to colored rect if not
-        self._draw_button(screen, mouse_pos, self.play_rect, self.play_imgs,
-                          self.play_scale_normal, self.play_scale_hover,
-                          "PLAY", (80, 200, 80), (50, 150, 50), (255, 255, 255), 3)
-        self._draw_button(screen, mouse_pos, self.headwar_rect, self.headwar_imgs,
-                          self.headwar_scale_normal, self.headwar_scale_hover,
-                          "HEAD WAR", (220, 90, 40), (180, 60, 25), (255, 200, 100), 3)
-        self._draw_button(screen, mouse_pos, self.online_rect, self.online_imgs,
-                          self.online_scale_normal, self.online_scale_hover,
-                          "ONLINE", (60, 120, 220), (40, 80, 170), (150, 200, 255), 3)
-        self._draw_button(screen, mouse_pos, self.settings_rect, self.settings_imgs,
-                          self.settings_scale_normal, self.settings_scale_hover,
-                          "SETTINGS", (185, 145, 65), (148, 108, 42), (255, 220, 150), 2)
-        self._draw_button(screen, mouse_pos, self.exit_rect, self.exit_imgs,
-                          self.exit_scale_normal, self.exit_scale_hover,
-                          "EXIT", (180, 50, 50), (140, 35, 35), (255, 150, 150), 2)
+        # Build button list for index-based controller highlighting
+        all_buttons = [
+            (self.play_rect, self.play_imgs, self.play_scale_normal, self.play_scale_hover,
+             "PLAY", (80, 200, 80), (50, 150, 50), (255, 255, 255), 3),
+            (self.headwar_rect, self.headwar_imgs, self.headwar_scale_normal, self.headwar_scale_hover,
+             "HEAD WAR", (220, 90, 40), (180, 60, 25), (255, 200, 100), 3),
+            (self.online_rect, self.online_imgs, self.online_scale_normal, self.online_scale_hover,
+             "ONLINE", (60, 120, 220), (40, 80, 170), (150, 200, 255), 3),
+            (self.settings_rect, self.settings_imgs, self.settings_scale_normal, self.settings_scale_hover,
+             "SETTINGS", (185, 145, 65), (148, 108, 42), (255, 220, 150), 2),
+            (self.exit_rect, self.exit_imgs, self.exit_scale_normal, self.exit_scale_hover,
+             "EXIT", (180, 50, 50), (140, 35, 35), (255, 150, 150), 2),
+        ]
+        for i, (rect, imgs, sn, sh, fb, hc, nc, bc, bw) in enumerate(all_buttons):
+            ctrl_hover = (i == self.selected_index)
+            self._draw_button(screen, mouse_pos, rect, imgs, sn, sh, fb, hc, nc, bc, bw, ctrl_hover)
     
     def _draw_button(self, screen, mouse_pos, rect, imgs, scale_normal, scale_hover,
-                     fallback_text, hover_color, normal_color, border_color, border_width):
+                     fallback_text, hover_color, normal_color, border_color, border_width,
+                     controller_hover=False):
         """Draw a single menu button. Uses custom images if available, falls back to colored rect.
-        Images are scaled from the RAW original and drawn CENTER-ANCHORED to the rect."""
-        hovering = rect.collidepoint(mouse_pos)
+        Images are scaled from the RAW original and drawn CENTER-ANCHORED to the rect.
+        controller_hover=True forces the hover state (for D-Pad selection)."""
+        hovering = rect.collidepoint(mouse_pos) or controller_hover
         
         if imgs is not None:
             raw_normal, raw_hover, base_w, base_h = imgs
@@ -229,6 +266,11 @@ class PauseMenu:
     def __init__(self, font):
         self.font = font
         self.audio_manager = None
+        
+        # Controller navigation state
+        self.selected_index = -1  # -1 = no controller selection active
+        self._button_names = ["continue", "new", "exit"]
+        self._button_count = 3
         
         # ================================================================
         # POSITION OFFSETS — shift elements from their default positions.
@@ -303,6 +345,7 @@ class PauseMenu:
     def handle_event(self, event) -> str:
         """Returns which button was clicked, or None. Escape also counts as 'continue'."""
         if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+            self.selected_index = -1
             # Check with offsets applied
             cont_rect = self.btn_continue.move(self.continue_offset_x, self.continue_offset_y)
             new_rect = self.btn_new.move(self.new_offset_x, self.new_offset_y)
@@ -324,13 +367,37 @@ class PauseMenu:
             if self.audio_manager:
                 self.audio_manager.play_sound("menu_click")
             return "continue"
+        
+        # Controller D-Pad navigation
+        if event.type == pygame.JOYHATMOTION:
+            hat_x, hat_y = event.value
+            if hat_y == -1:  # D-Pad Down
+                if self.selected_index < 0:
+                    self.selected_index = 0
+                else:
+                    self.selected_index = (self.selected_index + 1) % self._button_count
+            elif hat_y == 1:  # D-Pad Up
+                if self.selected_index < 0:
+                    self.selected_index = self._button_count - 1
+                else:
+                    self.selected_index = (self.selected_index - 1) % self._button_count
+        
+        # Controller A button — confirm selection
+        if event.type == pygame.JOYBUTTONDOWN and event.button == JOY_BTN_A:
+            if self.selected_index >= 0:
+                if self.audio_manager:
+                    self.audio_manager.play_sound("menu_click")
+                return self._button_names[self.selected_index]
+        
         return None
     
     def _draw_custom_button(self, screen, mouse, rect, raw_normal, raw_hover,
-                            scale_normal, scale_hover, ox, oy, fallback_label):
-        """Draw a single pause menu button with custom images or colored fallback."""
+                            scale_normal, scale_hover, ox, oy, fallback_label,
+                            controller_hover=False):
+        """Draw a single pause menu button with custom images or colored fallback.
+        controller_hover=True forces the hover state for D-Pad selection."""
         shifted = rect.move(ox, oy)
-        hovering = shifted.collidepoint(mouse)
+        hovering = shifted.collidepoint(mouse) or controller_hover
         
         if raw_normal is not None and raw_hover is not None:
             raw = raw_hover if hovering else raw_normal
@@ -364,19 +431,22 @@ class PauseMenu:
             title = self.font.render("PAUSED", True, (255, 220, 60))
             screen.blit(title, title.get_rect(centerx=SCREEN_W//2, y=self.panel_rect.y + 24))
         
-        # ── Buttons ──
+        # ── Buttons (with controller highlight support) ──
         self._draw_custom_button(screen, mouse, self.btn_continue,
                                  self._raw_continue, self._raw_continue_hover,
                                  self.continue_scale_normal, self.continue_scale_hover,
-                                 self.continue_offset_x, self.continue_offset_y, "Continue")
+                                 self.continue_offset_x, self.continue_offset_y, "Continue",
+                                 controller_hover=(self.selected_index == 0))
         self._draw_custom_button(screen, mouse, self.btn_new,
                                  self._raw_new, self._raw_new_hover,
                                  self.new_scale_normal, self.new_scale_hover,
-                                 self.new_offset_x, self.new_offset_y, "Start New")
+                                 self.new_offset_x, self.new_offset_y, "Start New",
+                                 controller_hover=(self.selected_index == 1))
         self._draw_custom_button(screen, mouse, self.btn_exit,
                                  self._raw_exit, self._raw_exit_hover,
                                  self.pause_exit_scale_normal, self.pause_exit_scale_hover,
-                                 self.pause_exit_offset_x, self.pause_exit_offset_y, "Exit")
+                                 self.pause_exit_offset_x, self.pause_exit_offset_y, "Exit",
+                                 controller_hover=(self.selected_index == 2))
 
 
 class GameOverMenu:
@@ -387,6 +457,11 @@ class GameOverMenu:
         self.font_large = font_large
         self.font_medium = font_medium
         self.audio_manager = None
+        
+        # Controller navigation state
+        self.selected_index = -1  # -1 = no controller selection active
+        self._button_names = ["new", "exit"]
+        self._button_count = 2
         
         # ================================================================
         # ██  GAME OVER — MASTER CONFIGURATION HUB  ██
@@ -466,6 +541,7 @@ class GameOverMenu:
 
     def handle_event(self, event) -> str:
         if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+            self.selected_index = -1
             mouse = pygame.mouse.get_pos()
             # Use actual image dimensions for hit detection
             hit_new = self._get_btn_rect(self.btn_new, self.btn_new_scale_normal,
@@ -482,6 +558,28 @@ class GameOverMenu:
                 if self.audio_manager:
                     self.audio_manager.play_sound("menu_click")
                 return "exit"
+        
+        # Controller D-Pad navigation
+        if event.type == pygame.JOYHATMOTION:
+            hat_x, hat_y = event.value
+            if hat_y == -1:  # D-Pad Down
+                if self.selected_index < 0:
+                    self.selected_index = 0
+                else:
+                    self.selected_index = (self.selected_index + 1) % self._button_count
+            elif hat_y == 1:  # D-Pad Up
+                if self.selected_index < 0:
+                    self.selected_index = self._button_count - 1
+                else:
+                    self.selected_index = (self.selected_index - 1) % self._button_count
+        
+        # Controller A button — confirm selection
+        if event.type == pygame.JOYBUTTONDOWN and event.button == JOY_BTN_A:
+            if self.selected_index >= 0:
+                if self.audio_manager:
+                    self.audio_manager.play_sound("menu_click")
+                return self._button_names[self.selected_index]
+        
         return None
 
     def draw(self, screen, winner_name):
@@ -512,7 +610,8 @@ class GameOverMenu:
         ]:
             # Hitbox uses actual image dimensions when custom PNG exists
             hit_rect = self._get_btn_rect(base_rect, scale_n, ox, oy, raw_img=raw_normal)
-            is_hover = hit_rect.collidepoint(mouse)
+            btn_idx = 0 if base_rect is self.btn_new else 1
+            is_hover = hit_rect.collidepoint(mouse) or (btn_idx == self.selected_index)
             
             if raw_normal is not None:
                 raw_img = raw_hover if (is_hover and raw_hover is not None) else raw_normal
@@ -689,6 +788,14 @@ class SettingsMenu:
         self._raw_mute_sfx = self._try_load_raw("assets/ui/buttons/mute_sfx.png")
         self._raw_mute_sfx_muted = self._try_load_raw("assets/ui/buttons/mute_sfx_muted.png")
         self._raw_face_board = self._try_load_raw("assets/ui/drop_faces_board.png")
+        
+        # ── Controller hold-button state tracking ──
+        # These track whether specific buttons are currently HELD (for combo actions)
+        self._joy_a_held  = False  # Hold A  + D-Pad = adjust SFX volume
+        self._joy_y_held  = False  # Hold Y  + D-Pad = adjust Music volume
+        self._joy_l1_held = False  # Hold L1 + D-Pad = adjust left face size (if face imported)
+        self._joy_r1_held = False  # Hold R1 + D-Pad = adjust right face size (if face imported)
+        self._vol_step    = 0.05   # volume change per D-Pad press
     
     def _try_load_raw(self, path):
         """Load an image at full resolution. Returns None if file is missing."""
@@ -917,6 +1024,130 @@ class SettingsMenu:
         # Escape key closes the settings
         if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
             return "done"
+        
+        # ── CONTROLLER: X button closes settings ──
+        if event.type == pygame.JOYBUTTONDOWN and event.button == JOY_BTN_X:
+            if self.audio_manager:
+                self.audio_manager.play_sound("menu_click")
+            return "done"
+        
+        # ── CONTROLLER: Track held buttons ──
+        if event.type == pygame.JOYBUTTONDOWN:
+            if event.button == JOY_BTN_A:
+                self._joy_a_held = True
+            elif event.button == JOY_BTN_Y:
+                self._joy_y_held = True
+            elif event.button == JOY_BTN_L1:
+                self._joy_l1_held = True
+                # Tap L1 to import left face (only if no face currently loaded)
+                if self.p1_face is None:
+                    if self.audio_manager:
+                        self.audio_manager.play_sound("menu_click")
+                    face = self._open_file_dialog()
+                    if face is not None:
+                        self.p1_face = face
+            elif event.button == JOY_BTN_R1:
+                self._joy_r1_held = True
+                # Tap R1 to import right face (only if no face currently loaded)
+                if self.p2_face is None:
+                    if self.audio_manager:
+                        self.audio_manager.play_sound("menu_click")
+                    face = self._open_file_dialog()
+                    if face is not None:
+                        self.p2_face = face
+        
+        if event.type == pygame.JOYBUTTONUP:
+            if event.button == JOY_BTN_A:
+                self._joy_a_held = False
+            elif event.button == JOY_BTN_Y:
+                self._joy_y_held = False
+            elif event.button == JOY_BTN_L1:
+                self._joy_l1_held = False
+            elif event.button == JOY_BTN_R1:
+                self._joy_r1_held = False
+        
+        # ── CONTROLLER: L2/R2 triggers to remove faces ──
+        if event.type == pygame.JOYAXISMOTION:
+            if event.axis == JOY_AXIS_L2 and event.value > JOY_TRIGGER_THRESHOLD:
+                if self.p1_face is not None:
+                    if self.audio_manager:
+                        self.audio_manager.play_sound("menu_click")
+                    self.p1_face = None
+            elif event.axis == JOY_AXIS_R2 and event.value > JOY_TRIGGER_THRESHOLD:
+                if self.p2_face is not None:
+                    if self.audio_manager:
+                        self.audio_manager.play_sound("menu_click")
+                    self.p2_face = None
+        
+        # ── CONTROLLER: D-Pad combos while holding A/Y/L1/R1 ──
+        if event.type == pygame.JOYHATMOTION:
+            hat_x, hat_y = event.value
+            
+            # Hold A + D-Pad = adjust SFX volume / quick-mute
+            if self._joy_a_held:
+                if hat_x == 1:   # Right = increase SFX
+                    self.sfx_volume = min(1.0, self.sfx_volume + self._vol_step)
+                    self._sfx_muted = False
+                    if self.audio_manager:
+                        self.audio_manager.set_sfx_volume(self.sfx_volume)
+                elif hat_x == -1:  # Left = decrease SFX
+                    self.sfx_volume = max(0.0, self.sfx_volume - self._vol_step)
+                    if self.sfx_volume <= 0:
+                        self._sfx_muted = True
+                    if self.audio_manager:
+                        self.audio_manager.set_sfx_volume(self.sfx_volume)
+                elif hat_y == -1:  # Down = quick-mute SFX
+                    if self._sfx_muted:
+                        self._sfx_muted = False
+                        self.sfx_volume = self._sfx_vol_before_mute
+                    else:
+                        self._sfx_vol_before_mute = self.sfx_volume
+                        self._sfx_muted = True
+                        self.sfx_volume = 0.0
+                    if self.audio_manager:
+                        self.audio_manager.set_sfx_volume(self.sfx_volume)
+                return None
+            
+            # Hold Y + D-Pad = adjust Music volume / quick-mute
+            if self._joy_y_held:
+                if hat_x == 1:   # Right = increase Music
+                    self.music_volume = min(1.0, self.music_volume + self._vol_step)
+                    self._music_muted = False
+                    if self.audio_manager:
+                        self.audio_manager.set_music_volume(self.music_volume)
+                elif hat_x == -1:  # Left = decrease Music
+                    self.music_volume = max(0.0, self.music_volume - self._vol_step)
+                    if self.music_volume <= 0:
+                        self._music_muted = True
+                    if self.audio_manager:
+                        self.audio_manager.set_music_volume(self.music_volume)
+                elif hat_y == 1:  # Up = quick-mute Music
+                    if self._music_muted:
+                        self._music_muted = False
+                        self.music_volume = self._music_vol_before_mute
+                    else:
+                        self._music_vol_before_mute = self.music_volume
+                        self._music_muted = True
+                        self.music_volume = 0.0
+                    if self.audio_manager:
+                        self.audio_manager.set_music_volume(self.music_volume)
+                return None
+            
+            # Hold L1 + D-Pad Left/Right = adjust left face size (only when face is imported)
+            if self._joy_l1_held and self.p1_face is not None:
+                if hat_x == 1:   # Right = increase
+                    self.p1_head_base = min(6.0, round(self.p1_head_base + 0.1, 1))
+                elif hat_x == -1:  # Left = decrease
+                    self.p1_head_base = max(0.5, round(self.p1_head_base - 0.1, 1))
+                return None
+            
+            # Hold R1 + D-Pad Left/Right = adjust right face size (only when face is imported)
+            if self._joy_r1_held and self.p2_face is not None:
+                if hat_x == 1:   # Right = increase
+                    self.p2_head_base = min(6.0, round(self.p2_head_base + 0.1, 1))
+                elif hat_x == -1:  # Left = decrease
+                    self.p2_head_base = max(0.5, round(self.p2_head_base - 0.1, 1))
+                return None
         
         return None
     
@@ -1236,6 +1467,16 @@ class OnlineMenu:
                     self.audio_manager.play_sound("menu_click")
                 return "done"
         if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
+            return "done"
+        # Controller X button closes the online popup
+        if event.type == pygame.JOYBUTTONDOWN and event.button == JOY_BTN_X:
+            if self.audio_manager:
+                self.audio_manager.play_sound("menu_click")
+            return "done"
+        # Controller A button also closes (since it opens the popup)
+        if event.type == pygame.JOYBUTTONDOWN and event.button == JOY_BTN_A:
+            if self.audio_manager:
+                self.audio_manager.play_sound("menu_click")
             return "done"
         return None
     

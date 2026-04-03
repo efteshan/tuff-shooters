@@ -292,6 +292,17 @@ CONTROLS = {
     }
 }
 
+# ── Gamepad / Controller Button IDs (Xbox layout) ─────────────
+JOY_BTN_A   = 0   # A / Cross     — confirm / select
+JOY_BTN_B   = 1   # B / Circle
+JOY_BTN_X   = 2   # X / Square    — close popups
+JOY_BTN_Y   = 3   # Y / Triangle  — pause / resume
+JOY_BTN_L1  = 4   # Left Bumper   — knife (in-game) / import left face / hold for left size
+JOY_BTN_R1  = 5   # Right Bumper  — shoot (in-game) / import right face / hold for right size
+JOY_AXIS_L2 = 4   # Left Trigger axis index  — remove left face
+JOY_AXIS_R2 = 5   # Right Trigger axis index — remove right face
+JOY_TRIGGER_THRESHOLD = 0.5  # axis value above which trigger counts as "pressed"
+
 # Pause button rect
 PAUSE_BTN_RECT = None  # Will be initialized as pygame.Rect(SCREEN_W//2 - 50, 10, 100, 36)
 
@@ -455,7 +466,9 @@ def load_or_placeholder(path: str, size: tuple, color: tuple) -> pygame.Surface:
 # ── Respawn / Head-Streak Tuning ──────────────────────────────
 RESPAWN_DELAY         = 1.5    # seconds before dead player respawns
 INVULN_DURATION       = 0.5    # seconds of invulnerability after respawn
-MAX_KILLS_TO_WIN      = 3      # kills needed to win the match
+MAX_KILLS_TO_WIN      = 3      # kills needed to win the match (Head Wars)
+CLASSIC_LIVES         = 3      # lives each player starts with in Classic mode
+MATCH_TIME_LIMIT      = 480.0  # 8-minute match timer (seconds) — 0 = no timer
 HEAD_SIZE_BASE        = 1.0    # default head scale multiplier
 HEAD_SIZE_STEP        = 0.2    # head growth per kill (1.0 → 1.3 → 1.6 → win)
 P1_HIDE_HAT_IF_CUSTOM = True   # hide cowboy hat when P1 uses custom face
