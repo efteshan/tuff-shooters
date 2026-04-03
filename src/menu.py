@@ -238,24 +238,25 @@ class PauseMenu:
         self.bg_offset_x         = 0
         self.bg_offset_y         = 0
         self.continue_offset_x   = 0
-        self.continue_offset_y   = -20
+        self.continue_offset_y   = -38
         self.new_offset_x        = 0
-        self.new_offset_y        = -12
+        self.new_offset_y        = -15
         self.pause_exit_offset_x = 0
-        self.pause_exit_offset_y = -9
+        self.pause_exit_offset_y = 4
         # ================================================================
         
         # ================================================================
         # SIZE MULTIPLIERS — scale images up/down from raw full-res.
         # 1.0 = default size. Quality is always crisp.
         # ================================================================
-        self.bg_scale               = 1.27
-        self.continue_scale_normal  = 1.2
-        self.continue_scale_hover   = 1.15
-        self.new_scale_normal       = 1.3
-        self.new_scale_hover        = 1.25
-        self.pause_exit_scale_normal = 1.0
-        self.pause_exit_scale_hover  = 0.95
+        self.bg_scale               = 1.4
+        self.continue_scale_normal  = 1.34
+        self.continue_scale_hover   = 1.29
+        self.new_scale_normal       = 1.5
+        self.new_scale_normal       = 1.4
+        self.new_scale_hover        = 1.35
+        self.pause_exit_scale_normal = 1.21
+        self.pause_exit_scale_hover  = 1.16
         # ================================================================
         
         w, h = 340, 320
@@ -379,12 +380,37 @@ class PauseMenu:
 
 
 class GameOverMenu:
-    """Shows the winner and offers Play Again or Main Menu buttons."""
+    """Shows custom game over screen with configurable images for background,
+    Play Again, and Main Menu buttons. All elements support manual positioning and scaling."""
 
     def __init__(self, font_large, font_medium):
         self.font_large = font_large
         self.font_medium = font_medium
         self.audio_manager = None
+        
+        # ================================================================
+        # ██  GAME OVER — MASTER CONFIGURATION HUB  ██
+        # ================================================================
+        
+        # ── POSITION OFFSETS ──
+        self.bg_offset_x           = 0
+        self.bg_offset_y           = 0
+        self.btn_new_offset_x      = 0     # Play Again button
+        self.btn_new_offset_y      = -40
+        self.btn_exit_offset_x     = 0     # Main Menu button
+        self.btn_exit_offset_y     = -20
+        
+        # ── SIZE MULTIPLIERS ──
+        self.bg_scale              = 0.1
+        self.btn_new_scale_normal  = 0.17
+        self.btn_new_scale_hover   = 0.16
+        self.btn_exit_scale_normal = 0.17
+        self.btn_exit_scale_hover  = 0.16
+        
+        # ================================================================
+        # ██  END OF CONFIGURATION HUB  ██
+        # ================================================================
+        
         w, h = 400, 380
         self.panel_rect = pygame.Rect(SCREEN_W//2 - w//2, SCREEN_H//2 - h//2, w, h)
 
@@ -394,46 +420,115 @@ class GameOverMenu:
         gap = 72
         self.btn_new = pygame.Rect(cx, base_y, bw, bh)
         self.btn_exit = pygame.Rect(cx, base_y + gap, bw, bh)
+        self._base_btn_w = bw
+        self._base_btn_h = bh
+        
+        # Pre-build the dark overlay
+        self._overlay = pygame.Surface((SCREEN_W, SCREEN_H), pygame.SRCALPHA)
+        self._overlay.fill((0, 0, 0, 180))
+        
+        # ── Load custom images (raw full-res for crisp scaling) ──
+        self._raw_bg = self._try_load_raw("assets/ui/game_over_bg.png")
+        self._raw_btn_new = self._try_load_raw("assets/ui/buttons/btn_play_again.png")
+        self._raw_btn_new_hover = self._try_load_raw("assets/ui/buttons/btn_play_again_hover.png")
+        self._raw_btn_exit = self._try_load_raw("assets/ui/buttons/btn_main_menu.png")
+        self._raw_btn_exit_hover = self._try_load_raw("assets/ui/buttons/btn_main_menu_hover.png")
+    
+    def _try_load_raw(self, path):
+        """Load an image at full resolution. Returns None if file is missing."""
+        try:
+            if os.path.isfile(path):
+                return pygame.image.load(path).convert_alpha()
+        except Exception:
+            pass
+        return None
+    
+    def _scale_raw(self, raw_surface, target_w, target_h, multiplier):
+        """Scale a raw full-res image to (target_w * multiplier, target_h * multiplier).
+        Always scales from the ORIGINAL for maximum quality."""
+        final_w = max(1, int(target_w * multiplier))
+        final_h = max(1, int(target_h * multiplier))
+        return pygame.transform.smoothscale(raw_surface, (final_w, final_h))
+    
+    def _get_btn_rect(self, base_rect, scale, ox, oy, raw_img=None):
+        """Return a scaled + offset button rect centered on the original.
+        If raw_img is provided, uses its actual dimensions for pixel-perfect hitboxes."""
+        if raw_img is not None:
+            rw, rh = raw_img.get_size()
+            sw = max(1, int(rw * scale))
+            sh = max(1, int(rh * scale))
+        else:
+            sw = max(1, int(self._base_btn_w * scale))
+            sh = max(1, int(self._base_btn_h * scale))
+        cx = base_rect.centerx + ox
+        cy = base_rect.centery + oy
+        return pygame.Rect(cx - sw//2, cy - sh//2, sw, sh)
 
     def handle_event(self, event) -> str:
         if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
-            if self.btn_new.collidepoint(event.pos):
+            mouse = pygame.mouse.get_pos()
+            # Use actual image dimensions for hit detection
+            hit_new = self._get_btn_rect(self.btn_new, self.btn_new_scale_normal,
+                                          self.btn_new_offset_x, self.btn_new_offset_y,
+                                          raw_img=self._raw_btn_new)
+            if hit_new.collidepoint(mouse):
                 if self.audio_manager:
                     self.audio_manager.play_sound("menu_click")
                 return "new"
-            if self.btn_exit.collidepoint(event.pos):
+            hit_exit = self._get_btn_rect(self.btn_exit, self.btn_exit_scale_normal,
+                                           self.btn_exit_offset_x, self.btn_exit_offset_y,
+                                           raw_img=self._raw_btn_exit)
+            if hit_exit.collidepoint(mouse):
                 if self.audio_manager:
                     self.audio_manager.play_sound("menu_click")
                 return "exit"
         return None
 
     def draw(self, screen, winner_name):
-        # Dark backdrop
-        overlay = pygame.Surface((SCREEN_W, SCREEN_H), pygame.SRCALPHA)
-        overlay.fill((0, 0, 0, 180))
-        screen.blit(overlay, (0, 0))
-
-        # Red-tinted panel
-        pygame.draw.rect(screen, (40, 30, 30), self.panel_rect, border_radius=16)
-        pygame.draw.rect(screen, (120, 100, 100), self.panel_rect, 3, border_radius=16)
-
-        title = self.font_large.render("GAME OVER", True, (255, 80, 80))
-        screen.blit(title, title.get_rect(centerx=SCREEN_W//2, y=self.panel_rect.y + 30))
-
-        winner_text = self.font_medium.render(f"{winner_name} WINS!", True, (255, 255, 100))
-        screen.blit(winner_text, winner_text.get_rect(centerx=SCREEN_W//2, y=self.panel_rect.y + 100))
-
         mouse = pygame.mouse.get_pos()
-        for rect, label in [
-            (self.btn_new, "Play Again"),
-            (self.btn_exit, "Main Menu"),
+        
+        # Dark backdrop
+        screen.blit(self._overlay, (0, 0))
+        
+        # Background — custom image or fallback panel
+        if self._raw_bg is not None:
+            raw_w, raw_h = self._raw_bg.get_size()
+            bg_surf = self._scale_raw(self._raw_bg, raw_w, raw_h, self.bg_scale)
+            bg_cx = SCREEN_W // 2 + self.bg_offset_x
+            bg_cy = SCREEN_H // 2 + self.bg_offset_y
+            screen.blit(bg_surf, bg_surf.get_rect(center=(bg_cx, bg_cy)))
+        else:
+            pygame.draw.rect(screen, (40, 30, 30), self.panel_rect, border_radius=16)
+            pygame.draw.rect(screen, (120, 100, 100), self.panel_rect, 3, border_radius=16)
+        
+        # Buttons — custom images or fallback drawn rectangles
+        for base_rect, raw_normal, raw_hover, label, scale_n, scale_h, ox, oy in [
+            (self.btn_new, self._raw_btn_new, self._raw_btn_new_hover, "Play Again",
+             self.btn_new_scale_normal, self.btn_new_scale_hover,
+             self.btn_new_offset_x, self.btn_new_offset_y),
+            (self.btn_exit, self._raw_btn_exit, self._raw_btn_exit_hover, "Main Menu",
+             self.btn_exit_scale_normal, self.btn_exit_scale_hover,
+             self.btn_exit_offset_x, self.btn_exit_offset_y),
         ]:
-            hover = rect.collidepoint(mouse)
-            color = (200, 70, 70) if hover else (150, 45, 45)
-            pygame.draw.rect(screen, color, rect, border_radius=10)
-            pygame.draw.rect(screen, (220, 200, 200), rect, 2, border_radius=10)
-            text = self.font_medium.render(label, True, (255, 255, 255))
-            screen.blit(text, text.get_rect(center=rect.center))
+            # Hitbox uses actual image dimensions when custom PNG exists
+            hit_rect = self._get_btn_rect(base_rect, scale_n, ox, oy, raw_img=raw_normal)
+            is_hover = hit_rect.collidepoint(mouse)
+            
+            if raw_normal is not None:
+                raw_img = raw_hover if (is_hover and raw_hover is not None) else raw_normal
+                scale = scale_h if is_hover else scale_n
+                rw, rh = raw_img.get_size()
+                btn_surf = self._scale_raw(raw_img, rw, rh, scale)
+                btn_cx = base_rect.centerx + ox
+                btn_cy = base_rect.centery + oy
+                screen.blit(btn_surf, btn_surf.get_rect(center=(btn_cx, btn_cy)))
+            else:
+                draw_rect = self._get_btn_rect(base_rect, scale_h if is_hover else scale_n, ox, oy)
+                color = (200, 70, 70) if is_hover else (150, 45, 45)
+                pygame.draw.rect(screen, color, draw_rect, border_radius=10)
+                pygame.draw.rect(screen, (220, 200, 200), draw_rect, 2, border_radius=10)
+                text = self.font_medium.render(label, True, (255, 255, 255))
+                screen.blit(text, text.get_rect(center=draw_rect.center))
 
 
 class SettingsMenu:
@@ -463,9 +558,9 @@ class SettingsMenu:
         self.bg_offset_y           = 0
         self.close_offset_x        = -25
         self.close_offset_y        = 21
-        self.music_bar_offset_x    = 0
+        self.music_bar_offset_x    = 17
         self.music_bar_offset_y    = 40
-        self.sfx_bar_offset_x      = 0
+        self.sfx_bar_offset_x      = 17
         self.sfx_bar_offset_y      = 40
         self.p1_faces_offset_x     = 55
         self.p1_faces_offset_y     = 60
@@ -475,6 +570,20 @@ class SettingsMenu:
         self.p1_controls_offset_y  = -20
         self.p2_controls_offset_x  = 0    # The [- 1.0x +] below RIGHT face box
         self.p2_controls_offset_y  = -20
+        self.mute_music_offset_x   = 40    # Mute button left of music bar
+        self.mute_music_offset_y   = 0
+        self.mute_sfx_offset_x     = 40    # Mute button left of SFX bar
+        self.mute_sfx_offset_y     = 0
+        self.face_board_offset_x   = 0    # Drop Faces image board
+        self.face_board_offset_y   = 25
+        self.left_right_txt_offset_x = 1  # "LEFT"/"RIGHT" labels
+        self.left_right_txt_offset_y = 0
+        self.math_txt_offset_x     = -0.4    # The -, 1.0x, + text symbols
+        self.math_txt_offset_y     = -2.5
+        self.plus_icon_offset_x    = -1    # Big "+" inside empty face slots
+        self.plus_icon_offset_y    = -4
+        self.face_remove_offset_x  = 0
+        self.face_remove_offset_y  = 0
         
         # ── SIZE MULTIPLIERS ──
         # Scale elements up/down. 1.0 = default size.
@@ -488,6 +597,16 @@ class SettingsMenu:
         self.p2_box_scale          = 1.3  # Scales the RIGHT drop-face box
         self.p1_controls_scale     = 1.0  # Scales the [- 1.0x +] buttons for LEFT
         self.p2_controls_scale     = 1.0  # Scales the [- 1.0x +] buttons for RIGHT
+        self.mute_music_scale      = 1.0  # Mute music button size
+        self.mute_sfx_scale        = 1.0  # Mute SFX button size
+        self.face_board_scale      = 0.07  # Drop Faces image board size
+        self.left_right_txt_scale  = 0.7  # "LEFT"/"RIGHT" text size
+        self.math_txt_scale        = 1.0  # -, 1.0x, + text size
+        self.plus_icon_scale       = 1.0  # Big "+" inside empty face slots
+        self.face_remove_scale_normal = 0.8
+        self.face_remove_scale_hover  = 0.75
+        self.p1_custom_face_base_scale = 2.5  # Default base size of P1 custom face PNG
+        self.p2_custom_face_base_scale = 2.5  # Default base size of P2 custom face PNG
         
         # ================================================================
         # ██  END OF CONFIGURATION HUB  ██
@@ -516,6 +635,15 @@ class SettingsMenu:
         self.sfx_volume = 1.0
         self.dragging_sfx = False
         
+        # ── Mute toggle state ──
+        self._music_muted = False
+        self._music_vol_before_mute = 1.0
+        self._sfx_muted = False
+        self._sfx_vol_before_mute = 1.0
+        self._base_mute_size = 28  # Base clickable size for mute buttons
+        self.mute_music_rect = pygame.Rect(self.music_slider_track.x - 40, music_slider_y - 10, self._base_mute_size, self._base_mute_size)
+        self.mute_sfx_rect = pygame.Rect(self.sfx_slider_track.x - 40, sfx_slider_y - 10, self._base_mute_size, self._base_mute_size)
+        
         # ── Base Drop Faces dimensions (will be multiplied by scale at draw time) ──
         faces_top = sfx_slider_y + 60
         self._base_box_size = 100
@@ -523,7 +651,6 @@ class SettingsMenu:
         
         p1_cx = px + pw//4
         self.p1_box = pygame.Rect(p1_cx - self._base_box_size//2, box_y, self._base_box_size, self._base_box_size)
-        self.p1_remove = pygame.Rect(p1_cx - 40, box_y + self._base_box_size + 12, 80, 30)
         
         # Base head size +/- button dimensions
         self._base_ctrl_w, self._base_ctrl_h = 28, 28
@@ -533,7 +660,6 @@ class SettingsMenu:
         
         p2_cx = px + 3*pw//4
         self.p2_box = pygame.Rect(p2_cx - self._base_box_size//2, box_y, self._base_box_size, self._base_box_size)
-        self.p2_remove = pygame.Rect(p2_cx - 40, box_y + self._base_box_size + 12, 80, 30)
         self.p2_minus = pygame.Rect(p2_cx - 48, size_y, self._base_ctrl_w, self._base_ctrl_h)
         self.p2_plus = pygame.Rect(p2_cx + 20, size_y, self._base_ctrl_w, self._base_ctrl_h)
         
@@ -558,6 +684,11 @@ class SettingsMenu:
         self._raw_bg = self._try_load_raw("assets/ui/settings_bg.png")
         self._raw_close = self._try_load_raw("assets/ui/close.png")
         self._raw_close_hover = self._try_load_raw("assets/ui/close_hover.png")
+        self._raw_mute_music = self._try_load_raw("assets/ui/buttons/mute_music.png")
+        self._raw_mute_music_muted = self._try_load_raw("assets/ui/buttons/mute_music_muted.png")
+        self._raw_mute_sfx = self._try_load_raw("assets/ui/buttons/mute_sfx.png")
+        self._raw_mute_sfx_muted = self._try_load_raw("assets/ui/buttons/mute_sfx_muted.png")
+        self._raw_face_board = self._try_load_raw("assets/ui/drop_faces_board.png")
     
     def _try_load_raw(self, path):
         """Load an image at full resolution. Returns None if file is missing."""
@@ -590,11 +721,9 @@ class SettingsMenu:
             root.destroy()
             if path and os.path.isfile(path):
                 img = pygame.image.load(path).convert_alpha()
-                # Scale to fit 48x48 max while keeping aspect ratio
-                w, h = img.get_size()
-                scale = min(48 / w, 48 / h)
-                new_w, new_h = int(w * scale), int(h * scale)
-                return pygame.transform.smoothscale(img, (max(1, new_w), max(1, new_h)))
+                # Return the raw full-resolution image — all scaling
+                # happens at draw time for maximum quality.
+                return img
         except Exception:
             pass
         return None
@@ -628,6 +757,20 @@ class SettingsMenu:
         sp = pygame.Rect(p_cx - cw//2, p_cy - ch//2, cw, ch)
         return sm, sp
     
+    def _get_scaled_mute(self, mute_rect, scale, ox, oy):
+        """Return a scaled + offset mute button rect."""
+        sz = max(1, int(self._base_mute_size * scale))
+        cx = mute_rect.centerx + ox
+        cy = mute_rect.centery + oy
+        return pygame.Rect(cx - sz//2, cy - sz//2, sz, sz)
+    
+    def _get_scaled_face_close(self, scaled_box):
+        """Return the dynamic close button rect positioned at the top-right of a face box."""
+        sz = max(1, int(32 * self.face_remove_scale_normal))
+        cx = scaled_box.right + self.face_remove_offset_x
+        cy = scaled_box.top + self.face_remove_offset_y
+        return pygame.Rect(cx - sz//2, cy - sz//2, sz, sz)
+    
     def handle_event(self, event) -> str:
         """Handle clicks on close button, volume sliders, face boxes, remove/size buttons.
         Returns 'done' when the player closes the panel, otherwise None."""
@@ -639,6 +782,38 @@ class SettingsMenu:
                 if self.audio_manager:
                     self.audio_manager.play_sound("menu_click")
                 return "done"
+            
+            # Mute music toggle
+            mm_rect = self._get_scaled_mute(self.mute_music_rect, self.mute_music_scale,
+                                             self.music_bar_offset_x + self.mute_music_offset_x,
+                                             self.music_bar_offset_y + self.mute_music_offset_y)
+            if mm_rect.collidepoint(event.pos):
+                if self._music_muted:
+                    self._music_muted = False
+                    self.music_volume = self._music_vol_before_mute
+                else:
+                    self._music_vol_before_mute = self.music_volume
+                    self._music_muted = True
+                    self.music_volume = 0.0
+                if self.audio_manager:
+                    self.audio_manager.set_music_volume(self.music_volume)
+                return None
+            
+            # Mute SFX toggle
+            ms_rect = self._get_scaled_mute(self.mute_sfx_rect, self.mute_sfx_scale,
+                                             self.sfx_bar_offset_x + self.mute_sfx_offset_x,
+                                             self.sfx_bar_offset_y + self.mute_sfx_offset_y)
+            if ms_rect.collidepoint(event.pos):
+                if self._sfx_muted:
+                    self._sfx_muted = False
+                    self.sfx_volume = self._sfx_vol_before_mute
+                else:
+                    self._sfx_vol_before_mute = self.sfx_volume
+                    self._sfx_muted = True
+                    self.sfx_volume = 0.0
+                if self.audio_manager:
+                    self.audio_manager.set_sfx_volume(self.sfx_volume)
+                return None
             
             # Music slider — use scaled track for hit detection
             m_track, m_kr = self._get_scaled_slider(self.music_slider_track, self.music_bar_scale,
@@ -681,15 +856,15 @@ class SettingsMenu:
                     self.p2_face = face
                 return None
             
-            # Remove buttons (shifted with face offsets)
-            p1_rm = self.p1_remove.move(self.p1_faces_offset_x, self.p1_faces_offset_y)
+            # Remove custom faces buttons (top right of the boxes)
+            p1_rm = self._get_scaled_face_close(p1_sbox)
             if p1_rm.collidepoint(event.pos) and self.p1_face is not None:
                 if self.audio_manager:
                     self.audio_manager.play_sound("menu_click")
                 self.p1_face = None
                 return None
             
-            p2_rm = self.p2_remove.move(self.p2_faces_offset_x, self.p2_faces_offset_y)
+            p2_rm = self._get_scaled_face_close(p2_sbox)
             if p2_rm.collidepoint(event.pos) and self.p2_face is not None:
                 if self.audio_manager:
                     self.audio_manager.play_sound("menu_click")
@@ -704,7 +879,7 @@ class SettingsMenu:
                 self.p1_head_base = max(0.5, round(self.p1_head_base - 0.1, 1))
                 return None
             if p1_sp.collidepoint(event.pos):
-                self.p1_head_base = min(2.0, round(self.p1_head_base + 0.1, 1))
+                self.p1_head_base = min(6.0, round(self.p1_head_base + 0.1, 1))
                 return None
             
             p2_sm, p2_sp = self._get_scaled_ctrl(self.p2_minus, self.p2_plus, self.p2_controls_scale,
@@ -714,7 +889,7 @@ class SettingsMenu:
                 self.p2_head_base = max(0.5, round(self.p2_head_base - 0.1, 1))
                 return None
             if p2_sp.collidepoint(event.pos):
-                self.p2_head_base = min(2.0, round(self.p2_head_base + 0.1, 1))
+                self.p2_head_base = min(6.0, round(self.p2_head_base + 0.1, 1))
                 return None
         
         # Dragging sliders (use scaled tracks for accurate mapping)
@@ -828,33 +1003,67 @@ class SettingsMenu:
                           self.dragging_music, self.music_bar_scale,
                           self.music_bar_offset_x, self.music_bar_offset_y)
         
+        # ── Mute Music button (left of music bar) ──
+        mm_draw = self._get_scaled_mute(self.mute_music_rect, self.mute_music_scale,
+                                         self.music_bar_offset_x + self.mute_music_offset_x,
+                                         self.music_bar_offset_y + self.mute_music_offset_y)
+        raw_mm = self._raw_mute_music_muted if self._music_muted else self._raw_mute_music
+        if raw_mm is not None:
+            mm_surf = self._scale_raw(raw_mm, self._base_mute_size, self._base_mute_size, self.mute_music_scale)
+            screen.blit(mm_surf, mm_surf.get_rect(center=mm_draw.center))
+        else:
+            mm_c = (180, 60, 60) if self._music_muted else (100, 80, 60)
+            pygame.draw.rect(screen, mm_c, mm_draw, border_radius=6)
+            mm_t = self._font_small.render("M", True, (255, 230, 180))
+            screen.blit(mm_t, mm_t.get_rect(center=mm_draw.center))
+        
         # ── SFX Volume Slider (light brown, no label, no percentage) ──
         self._draw_slider(screen, self.sfx_slider_track, self.sfx_volume,
                           self.dragging_sfx, self.sfx_bar_scale,
                           self.sfx_bar_offset_x, self.sfx_bar_offset_y)
         
-        # ── Drop Faces section title (#dcc8a0) ──
-        faces_title_y = self.sfx_slider_track.y + self.sfx_bar_offset_y + 40
-        df_title = self._font_section.render("Drop Faces", True, (220, 200, 160))
-        screen.blit(df_title, df_title.get_rect(centerx=SCREEN_W//2, y=faces_title_y))
+        # ── Mute SFX button (left of SFX bar) ──
+        ms_draw = self._get_scaled_mute(self.mute_sfx_rect, self.mute_sfx_scale,
+                                         self.sfx_bar_offset_x + self.mute_sfx_offset_x,
+                                         self.sfx_bar_offset_y + self.mute_sfx_offset_y)
+        raw_ms = self._raw_mute_sfx_muted if self._sfx_muted else self._raw_mute_sfx
+        if raw_ms is not None:
+            ms_surf = self._scale_raw(raw_ms, self._base_mute_size, self._base_mute_size, self.mute_sfx_scale)
+            screen.blit(ms_surf, ms_surf.get_rect(center=ms_draw.center))
+        else:
+            ms_c = (180, 60, 60) if self._sfx_muted else (100, 80, 60)
+            pygame.draw.rect(screen, ms_c, ms_draw, border_radius=6)
+            ms_t = self._font_small.render("S", True, (255, 230, 180))
+            screen.blit(ms_t, ms_t.get_rect(center=ms_draw.center))
         
-        # (No subtitle — removed per user request)
+        # ── Drop Faces image board (replaces old text title) ──
+        faces_title_y = self.sfx_slider_track.y + self.sfx_bar_offset_y + 40
+        if self._raw_face_board is not None:
+            raw_w, raw_h = self._raw_face_board.get_size()
+            fb_surf = self._scale_raw(self._raw_face_board, raw_w, raw_h, self.face_board_scale)
+            fb_cx = SCREEN_W//2 + self.face_board_offset_x
+            fb_cy = faces_title_y + self.face_board_offset_y
+            screen.blit(fb_surf, fb_surf.get_rect(center=(fb_cx, fb_cy)))
         
         # ── Player face zones ──
-        # Border color: #dcc8a0 = (220, 200, 160)
         border_color = (220, 200, 160)
-        for label_text, box, face, remove_rect, box_scale, ox, oy in [
-            ("LEFT", self.p1_box, self.p1_face, self.p1_remove, self.p1_box_scale,
+        for label_text, box, face, box_scale, ox, oy in [
+            ("LEFT", self.p1_box, self.p1_face, self.p1_box_scale,
              self.p1_faces_offset_x, self.p1_faces_offset_y),
-            ("RIGHT", self.p2_box, self.p2_face, self.p2_remove, self.p2_box_scale,
+            ("RIGHT", self.p2_box, self.p2_face, self.p2_box_scale,
              self.p2_faces_offset_x, self.p2_faces_offset_y),
         ]:
             scaled_box = self._get_scaled_box(box, box_scale, ox, oy)
-            shifted_remove = remove_rect.move(ox, oy)
             
-            # Label above box ("LEFT" / "RIGHT")
+            # Label above box ("LEFT" / "RIGHT") — scaled + offset
             lbl = self.font_medium.render(label_text, True, border_color)
-            screen.blit(lbl, lbl.get_rect(centerx=scaled_box.centerx, bottom=scaled_box.y - 8))
+            if self.left_right_txt_scale != 1.0:
+                lw, lh = lbl.get_size()
+                lbl = pygame.transform.smoothscale(lbl, (max(1, int(lw * self.left_right_txt_scale)),
+                                                          max(1, int(lh * self.left_right_txt_scale))))
+            lbl_cx = scaled_box.centerx + self.left_right_txt_offset_x
+            lbl_by = scaled_box.y - 8 + self.left_right_txt_offset_y
+            screen.blit(lbl, lbl.get_rect(centerx=lbl_cx, bottom=lbl_by))
             
             # Drop zone box — highlights on hover
             hover_box = scaled_box.collidepoint(mouse)
@@ -870,17 +1079,31 @@ class SettingsMenu:
                 preview = pygame.transform.smoothscale(face, (max(1, pw2), max(1, ph2)))
                 screen.blit(preview, preview.get_rect(center=scaled_box.center))
             else:
+                # Big "+" inside empty slot — scaled + offset
                 plus = self._font_plus.render("+", True, (120, 110, 90))
-                screen.blit(plus, plus.get_rect(center=scaled_box.center))
+                if self.plus_icon_scale != 1.0:
+                    pw3, ph3 = plus.get_size()
+                    plus = pygame.transform.smoothscale(plus, (max(1, int(pw3 * self.plus_icon_scale)),
+                                                               max(1, int(ph3 * self.plus_icon_scale))))
+                plus_cx = scaled_box.centerx + self.plus_icon_offset_x
+                plus_cy = scaled_box.centery + self.plus_icon_offset_y
+                screen.blit(plus, plus.get_rect(center=(plus_cx, plus_cy)))
             
-            # Remove button (only shown when a face is selected)
+            # Close/Remove custom image (only shown top-right when a face is selected)
             if face is not None:
-                hover_rm = shifted_remove.collidepoint(mouse)
-                rm_color = (180, 60, 60) if hover_rm else (120, 50, 50)
-                pygame.draw.rect(screen, rm_color, shifted_remove, border_radius=6)
-                pygame.draw.rect(screen, (200, 150, 150), shifted_remove, 1, border_radius=6)
-                rm_text = self._font_small.render("Remove", True, (255, 220, 220))
-                screen.blit(rm_text, rm_text.get_rect(center=shifted_remove.center))
+                rm_rect = self._get_scaled_face_close(scaled_box)
+                hover_rm = rm_rect.collidepoint(mouse)
+                if self._raw_close is not None and self._raw_close_hover is not None:
+                    raw_c = self._raw_close_hover if hover_rm else self._raw_close
+                    c_scale = self.face_remove_scale_hover if hover_rm else self.face_remove_scale_normal
+                    c_surf = self._scale_raw(raw_c, 32, 32, c_scale)
+                    screen.blit(c_surf, c_surf.get_rect(center=rm_rect.center))
+                else:
+                    rm_color = (180, 60, 60) if hover_rm else (120, 50, 50)
+                    pygame.draw.rect(screen, rm_color, rm_rect, border_radius=6)
+                    pygame.draw.rect(screen, (200, 150, 150), rm_rect, 1, border_radius=6)
+                    rm_text = self._font_small.render("X", True, (255, 220, 220))
+                    screen.blit(rm_text, rm_text.get_rect(center=rm_rect.center))
         
         # ── Head size +/- controls (independently scaled and positioned) ──
         for minus_r, plus_r, scale_val, ctrl_scale, fox, foy, cox, coy in [
@@ -898,19 +1121,33 @@ class SettingsMenu:
             pygame.draw.rect(screen, c_m, sm, border_radius=6)
             pygame.draw.rect(screen, (160, 130, 80), sm, 1, border_radius=6)
             mt = self._font_btn.render("-", True, (255, 230, 180))
-            screen.blit(mt, mt.get_rect(center=sm.center))
+            if self.math_txt_scale != 1.0:
+                mw, mh = mt.get_size()
+                mt = pygame.transform.smoothscale(mt, (max(1, int(mw * self.math_txt_scale)),
+                                                        max(1, int(mh * self.math_txt_scale))))
+            screen.blit(mt, mt.get_rect(center=(sm.centerx + self.math_txt_offset_x,
+                                                 sm.centery + self.math_txt_offset_y)))
             
             hover_p = sp.collidepoint(mouse)
             c_p = (100, 80, 60) if hover_p else (70, 55, 40)
             pygame.draw.rect(screen, c_p, sp, border_radius=6)
             pygame.draw.rect(screen, (160, 130, 80), sp, 1, border_radius=6)
             pt = self._font_btn.render("+", True, (255, 230, 180))
-            screen.blit(pt, pt.get_rect(center=sp.center))
+            if self.math_txt_scale != 1.0:
+                tw, th = pt.get_size()
+                pt = pygame.transform.smoothscale(pt, (max(1, int(tw * self.math_txt_scale)),
+                                                        max(1, int(th * self.math_txt_scale))))
+            screen.blit(pt, pt.get_rect(center=(sp.centerx + self.math_txt_offset_x,
+                                                 sp.centery + self.math_txt_offset_y)))
             
-            # Current scale value displayed between the buttons
+            # Current scale value displayed between the buttons — scaled + offset
             sv = self._font_small.render(f"{scale_val:.1f}x", True, (200, 180, 140))
-            sx = (sm.right + sp.left) // 2
-            sy = sm.centery
+            if self.math_txt_scale != 1.0:
+                sw2, sh2 = sv.get_size()
+                sv = pygame.transform.smoothscale(sv, (max(1, int(sw2 * self.math_txt_scale)),
+                                                        max(1, int(sh2 * self.math_txt_scale))))
+            sx = (sm.right + sp.left) // 2 + self.math_txt_offset_x
+            sy = sm.centery + self.math_txt_offset_y
             screen.blit(sv, sv.get_rect(center=(sx, sy)))
 
 
@@ -919,13 +1156,40 @@ class SettingsMenu:
 
 
 class OnlineMenu:
-    """Popup overlay that shows a 'coming soon' message when the player clicks Online.
-    Has a dark background overlay and a close (X) button to return to the main menu."""
+    """Popup overlay that shows a custom message when the player clicks Online.
+    Supports custom background image, custom close button, and configurable text."""
     
     def __init__(self, font_large, font_medium):
         self.font_large = font_large
         self.font_medium = font_medium
         self.audio_manager = None
+        
+        # ================================================================
+        # ██  ONLINE MENU — MASTER CONFIGURATION HUB  ██
+        # All positioning and sizing controls in ONE place.
+        # ================================================================
+        
+        # ── POSITION OFFSETS ──
+        self.bg_offset_x           = 0
+        self.bg_offset_y           = 0
+        self.close_offset_x        = 0
+        self.close_offset_y        = 0
+        self.text_offset_x         = 0
+        self.text_offset_y         = 0
+        
+        # ── SIZE MULTIPLIERS ──
+        self.bg_scale              = 1.0
+        self.close_scale_normal    = 1.0
+        self.close_scale_hover     = 1.0
+        self.text_scale            = 1.0
+        
+        # ── TEXT CUSTOMIZATION ──
+        self.text_color            = (220, 200, 160)  # #dcc8a0
+        self.text_message          = "We are woking on it."
+        
+        # ================================================================
+        # ██  END OF CONFIGURATION HUB  ██
+        # ================================================================
         
         # Centered panel
         pw, ph = 500, 260
@@ -933,8 +1197,8 @@ class OnlineMenu:
         px, py = self.panel_rect.x, self.panel_rect.y
         
         # Close (X) button — top right corner
-        close_size = 32
-        self.close_rect = pygame.Rect(px + pw - close_size - 10, py + 10, close_size, close_size)
+        close_size = 20
+        self.close_rect = pygame.Rect(px + pw - close_size - 28, py + 18, close_size, close_size)
         
         # Pre-build the dark overlay
         self._overlay = pygame.Surface((SCREEN_W, SCREEN_H), pygame.SRCALPHA)
@@ -943,16 +1207,31 @@ class OnlineMenu:
         self._font_btn = pygame.font.Font(None, 28)
         self._font_msg = pygame.font.Font(None, 38)
         
-        # ============================================================
-        # CHANGE THIS TEXT to update the Online popup description.
-        # Just edit the string below to whatever you want it to say.
-        # ============================================================
-        self.message = "the online is coming soon"
+        # ── Load custom images (raw full-res for crisp scaling) ──
+        self._raw_bg = self._try_load_raw("assets/ui/online_bg.png")
+        self._raw_close = self._try_load_raw("assets/ui/close.png")
+        self._raw_close_hover = self._try_load_raw("assets/ui/close_hover.png")
+    
+    def _try_load_raw(self, path):
+        """Load an image at full resolution. Returns None if file is missing."""
+        try:
+            if os.path.isfile(path):
+                return pygame.image.load(path).convert_alpha()
+        except Exception:
+            pass
+        return None
+    
+    def _scale_raw(self, raw_surface, target_w, target_h, multiplier):
+        """Scale a raw full-res image. Always from ORIGINAL for max quality."""
+        final_w = max(1, int(target_w * multiplier))
+        final_h = max(1, int(target_h * multiplier))
+        return pygame.transform.smoothscale(raw_surface, (final_w, final_h))
     
     def handle_event(self, event) -> str:
         """Returns 'done' when close is clicked, otherwise None."""
         if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
-            if self.close_rect.collidepoint(event.pos):
+            close_hit = self.close_rect.move(self.close_offset_x, self.close_offset_y)
+            if close_hit.collidepoint(event.pos):
                 if self.audio_manager:
                     self.audio_manager.play_sound("menu_click")
                 return "done"
@@ -962,36 +1241,53 @@ class OnlineMenu:
     
     def draw(self, screen, video_frame=None, bg_image=None):
         """Draw the Online popup over the darkened background."""
-        # Draw the background (video or static)
         if video_frame is not None:
             screen.blit(video_frame, (0, 0))
         elif bg_image is not None:
             screen.blit(bg_image, (0, 0))
         
-        # Dark overlay
         screen.blit(self._overlay, (0, 0))
-        
-        # Panel card
-        pygame.draw.rect(screen, (30, 30, 45), self.panel_rect, border_radius=16)
-        pygame.draw.rect(screen, (80, 120, 200), self.panel_rect, 3, border_radius=16)
-        
-        # Title
-        title = self.font_large.render("ONLINE", True, (100, 180, 255))
-        screen.blit(title, title.get_rect(centerx=SCREEN_W//2, y=self.panel_rect.y + 20))
-        
         mouse = pygame.mouse.get_pos()
         
-        # Close (X) button
-        hover_close = self.close_rect.collidepoint(mouse)
-        close_color = (200, 60, 60) if hover_close else (120, 50, 50)
-        pygame.draw.rect(screen, close_color, self.close_rect, border_radius=6)
-        pygame.draw.rect(screen, (220, 180, 180), self.close_rect, 2, border_radius=6)
-        x_text = self._font_btn.render("X", True, (255, 255, 255))
-        screen.blit(x_text, x_text.get_rect(center=self.close_rect.center))
+        # ── Custom background image or fallback panel ──
+        if self._raw_bg is not None:
+            bg_surf = self._scale_raw(self._raw_bg, self.panel_rect.width, self.panel_rect.height, self.bg_scale)
+            bg_draw = bg_surf.get_rect(center=(
+                self.panel_rect.centerx + self.bg_offset_x,
+                self.panel_rect.centery + self.bg_offset_y
+            ))
+            screen.blit(bg_surf, bg_draw)
+        else:
+            pygame.draw.rect(screen, (30, 30, 45), self.panel_rect, border_radius=16)
+            pygame.draw.rect(screen, (80, 120, 200), self.panel_rect, 3, border_radius=16)
         
-        # Message text — centered in the panel
-        msg = self._font_msg.render(self.message, True, (220, 220, 240))
-        screen.blit(msg, msg.get_rect(center=self.panel_rect.center))
+        # ── Close (X) button — custom image or fallback ──
+        close_cx = self.close_rect.centerx + self.close_offset_x
+        close_cy = self.close_rect.centery + self.close_offset_y
+        hover_close = self.close_rect.move(self.close_offset_x, self.close_offset_y).collidepoint(mouse)
+        
+        if self._raw_close is not None and self._raw_close_hover is not None:
+            raw = self._raw_close_hover if hover_close else self._raw_close
+            scale = self.close_scale_hover if hover_close else self.close_scale_normal
+            close_surf = self._scale_raw(raw, self.close_rect.width, self.close_rect.height, scale)
+            screen.blit(close_surf, close_surf.get_rect(center=(close_cx, close_cy)))
+        else:
+            shifted_close = self.close_rect.move(self.close_offset_x, self.close_offset_y)
+            close_color = (200, 60, 60) if hover_close else (120, 50, 50)
+            pygame.draw.rect(screen, close_color, shifted_close, border_radius=6)
+            pygame.draw.rect(screen, (220, 180, 180), shifted_close, 2, border_radius=6)
+            x_text = self._font_btn.render("X", True, (255, 255, 255))
+            screen.blit(x_text, x_text.get_rect(center=shifted_close.center))
+        
+        # ── Description text — #dcc8a0, scaled + offset ──
+        msg = self._font_msg.render(self.text_message, True, self.text_color)
+        if self.text_scale != 1.0:
+            mw, mh = msg.get_size()
+            msg = pygame.transform.smoothscale(msg, (max(1, int(mw * self.text_scale)),
+                                                      max(1, int(mh * self.text_scale))))
+        msg_cx = self.panel_rect.centerx + self.text_offset_x
+        msg_cy = self.panel_rect.centery + self.text_offset_y
+        screen.blit(msg, msg.get_rect(center=(msg_cx, msg_cy)))
 
 
 # Legacy alias so existing imports don't break

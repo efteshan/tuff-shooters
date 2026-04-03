@@ -96,6 +96,8 @@ class Game:
         self.p2_custom_face = None
         self.p1_head_base = 1.0
         self.p2_head_base = 1.0
+        self.p1_custom_face_base_scale = 1.0
+        self.p2_custom_face_base_scale = 1.0
         
         # Initialize HUD
         self.hud = HUD(self.font_small)
@@ -310,6 +312,8 @@ class Game:
                 self.p2_custom_face = self.settings_menu.p2_face
                 self.p1_head_base = self.settings_menu.p1_head_base
                 self.p2_head_base = self.settings_menu.p2_head_base
+                self.p1_custom_face_base_scale = self.settings_menu.p1_custom_face_base_scale
+                self.p2_custom_face_base_scale = self.settings_menu.p2_custom_face_base_scale
                 self.state = "STATE_MENU"
         
         elif self.state == "STATE_PLAYING":
@@ -674,8 +678,10 @@ class Game:
         player.state = "IDLE"
         player.facing = 1 if player.player_id == 1 else -1
         custom_face = self.p1_custom_face if player.player_id == 1 else self.p2_custom_face
+        face_base_scale = self.p1_custom_face_base_scale if player.player_id == 1 else self.p2_custom_face_base_scale
         assets = self.p1_assets if player.player_id == 1 else self.p2_assets
         player.body = SkeletalBody(player.player_id, assets, custom_face=custom_face)
+        player.body.custom_face_base_scale = face_base_scale
         player.body.current_head_scale = player.head_scale
         player.knife_cooldown = 0.0
         player.shoot_held_last = False
@@ -723,6 +729,7 @@ class Game:
         self.p1.state = "IDLE"
         self.p1.facing = 1
         self.p1.body = SkeletalBody(1, self.p1_assets, custom_face=self.p1_custom_face)
+        self.p1.body.custom_face_base_scale = self.p1_custom_face_base_scale
         self.p1.knife_cooldown = 0.0
         self.p1.shoot_held_last = False
         self.p1.knife_held_last = False
@@ -756,6 +763,7 @@ class Game:
         self.p2.state = "IDLE"
         self.p2.facing = -1
         self.p2.body = SkeletalBody(2, self.p2_assets, custom_face=self.p2_custom_face)
+        self.p2.body.custom_face_base_scale = self.p2_custom_face_base_scale
         self.p2.knife_cooldown = 0.0
         self.p2.shoot_held_last = False
         self.p2.knife_held_last = False

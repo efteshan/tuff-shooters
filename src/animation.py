@@ -506,6 +506,7 @@ class SkeletalBody:
 
         # Custom face (bobblehead) — pre-cache flipped version
         self.custom_face = custom_face
+        self.custom_face_base_scale = 1.0  # set by game.py from settings
         if self.custom_face is not None:
             self.custom_face_f = pygame.transform.flip(self.custom_face, True, False)
         else:
@@ -1092,15 +1093,18 @@ class SkeletalBody:
         head_y_manual = HEAD_Y_OFFSET_P1 if self.player_id == 1 else HEAD_Y_OFFSET_P2
         if self.custom_face is not None:
             cf_img = self.custom_face_f if flip else self.custom_face
-            # Apply head scale
+            # Constrain the HD image to the default head size at scale 1.0,
+            # then multiply by custom_face_base_scale and hs — always scaling from raw.
+            def_head_w, def_head_h = self.head.get_size()  # 22x24
             cf_w0, cf_h0 = cf_img.get_size()
-            new_w = max(1, int(cf_w0 * hs))
-            new_h = max(1, int(cf_h0 * hs))
+            fit_scale = min(def_head_w / cf_w0, def_head_h / cf_h0)
+            total = fit_scale * self.custom_face_base_scale * hs
+            new_w = max(1, int(cf_w0 * total))
+            new_h = max(1, int(cf_h0 * total))
             cf_img = pygame.transform.smoothscale(cf_img, (new_w, new_h))
             if abs(head_tilt) > 2.0:
                 cf_img = pygame.transform.rotate(cf_img, -head_tilt)
             # Anchor at BOTTOM (neck) — grow upward only
-            def_head_w, def_head_h = self.head.get_size()
             cf_w, cf_h = cf_img.get_size()
             cx_offset = (def_head_w - cf_w) // 2
             cy_offset = def_head_h - cf_h  # bottom-anchor: all extra goes UP
