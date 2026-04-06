@@ -24,6 +24,7 @@ class MainMenu:
         self.selected_index = -1  # -1 = no controller selection active
         self._button_names = ["play", "head_war", "online", "settings", "exit"]
         self._button_count = 5
+        self._last_hover_index = -1  # tracks last hovered button for hover sound
         
         # ================================================================
         # BUTTON SIZE CONFIGURATION
@@ -186,6 +187,7 @@ class MainMenu:
         # Controller D-Pad navigation
         if event.type == pygame.JOYHATMOTION:
             hat_x, hat_y = event.value
+            old_index = self.selected_index
             if hat_y == -1:  # D-Pad Down
                 if self.selected_index < 0:
                     self.selected_index = 0
@@ -196,6 +198,11 @@ class MainMenu:
                     self.selected_index = self._button_count - 1
                 else:
                     self.selected_index = (self.selected_index - 1) % self._button_count
+            # Play hover sound when controller selection changes
+            if self.selected_index != old_index and self.selected_index >= 0:
+                self._last_hover_index = self.selected_index
+                if self.audio_manager:
+                    self.audio_manager.play_sound("menu_hover")
         
         # Controller A button — confirm selection
         if event.type == pygame.JOYBUTTONDOWN and event.button == JOY_BTN_A:
@@ -228,6 +235,18 @@ class MainMenu:
             (self.exit_rect, self.exit_imgs, self.exit_scale_normal, self.exit_scale_hover,
              "EXIT", (180, 50, 50), (140, 35, 35), (255, 150, 150), 2),
         ]
+        
+        # Detect mouse hover changes and play hover sound once per focus change
+        current_mouse_hover = -1
+        for i, (rect, *_rest) in enumerate(all_buttons):
+            if rect.collidepoint(mouse_pos):
+                current_mouse_hover = i
+                break
+        if current_mouse_hover != self._last_hover_index and current_mouse_hover >= 0:
+            if self.audio_manager:
+                self.audio_manager.play_sound("menu_hover")
+        self._last_hover_index = current_mouse_hover if current_mouse_hover >= 0 else self._last_hover_index
+        
         for i, (rect, imgs, sn, sh, fb, hc, nc, bc, bw) in enumerate(all_buttons):
             ctrl_hover = (i == self.selected_index)
             self._draw_button(screen, mouse_pos, rect, imgs, sn, sh, fb, hc, nc, bc, bw, ctrl_hover)
@@ -271,6 +290,7 @@ class PauseMenu:
         self.selected_index = -1  # -1 = no controller selection active
         self._button_names = ["continue", "new", "exit"]
         self._button_count = 3
+        self._last_hover_index = -1  # tracks last hovered button for hover sound
         
         # ================================================================
         # POSITION OFFSETS — shift elements from their default positions.
@@ -371,6 +391,7 @@ class PauseMenu:
         # Controller D-Pad navigation
         if event.type == pygame.JOYHATMOTION:
             hat_x, hat_y = event.value
+            old_index = self.selected_index
             if hat_y == -1:  # D-Pad Down
                 if self.selected_index < 0:
                     self.selected_index = 0
@@ -381,6 +402,11 @@ class PauseMenu:
                     self.selected_index = self._button_count - 1
                 else:
                     self.selected_index = (self.selected_index - 1) % self._button_count
+            # Play hover sound when controller selection changes
+            if self.selected_index != old_index and self.selected_index >= 0:
+                self._last_hover_index = self.selected_index
+                if self.audio_manager:
+                    self.audio_manager.play_sound("menu_hover")
         
         # Controller A button — confirm selection
         if event.type == pygame.JOYBUTTONDOWN and event.button == JOY_BTN_A:
@@ -416,6 +442,22 @@ class PauseMenu:
         screen.blit(self._overlay, (0, 0))
         
         mouse = pygame.mouse.get_pos()
+        
+        # Mouse hover sound for pause menu buttons
+        pause_btn_rects = [
+            self.btn_continue.move(self.continue_offset_x, self.continue_offset_y),
+            self.btn_new.move(self.new_offset_x, self.new_offset_y),
+            self.btn_exit.move(self.pause_exit_offset_x, self.pause_exit_offset_y),
+        ]
+        current_mouse_hover = -1
+        for i, r in enumerate(pause_btn_rects):
+            if r.collidepoint(mouse):
+                current_mouse_hover = i
+                break
+        if current_mouse_hover != self._last_hover_index and current_mouse_hover >= 0:
+            if self.audio_manager:
+                self.audio_manager.play_sound("menu_hover")
+        self._last_hover_index = current_mouse_hover if current_mouse_hover >= 0 else self._last_hover_index
         
         # ── Custom background image or fallback panel ──
         if self._raw_bg is not None:
@@ -462,6 +504,7 @@ class GameOverMenu:
         self.selected_index = -1  # -1 = no controller selection active
         self._button_names = ["new", "exit"]
         self._button_count = 2
+        self._last_hover_index = -1  # tracks last hovered button for hover sound
         
         # ================================================================
         # ██  GAME OVER — MASTER CONFIGURATION HUB  ██
@@ -562,6 +605,7 @@ class GameOverMenu:
         # Controller D-Pad navigation
         if event.type == pygame.JOYHATMOTION:
             hat_x, hat_y = event.value
+            old_index = self.selected_index
             if hat_y == -1:  # D-Pad Down
                 if self.selected_index < 0:
                     self.selected_index = 0
@@ -572,6 +616,11 @@ class GameOverMenu:
                     self.selected_index = self._button_count - 1
                 else:
                     self.selected_index = (self.selected_index - 1) % self._button_count
+            # Play hover sound when controller selection changes
+            if self.selected_index != old_index and self.selected_index >= 0:
+                self._last_hover_index = self.selected_index
+                if self.audio_manager:
+                    self.audio_manager.play_sound("menu_hover")
         
         # Controller A button — confirm selection
         if event.type == pygame.JOYBUTTONDOWN and event.button == JOY_BTN_A:
@@ -584,6 +633,25 @@ class GameOverMenu:
 
     def draw(self, screen, winner_name):
         mouse = pygame.mouse.get_pos()
+        
+        # Mouse hover sound for game over buttons
+        go_btn_rects = [
+            self._get_btn_rect(self.btn_new, self.btn_new_scale_normal,
+                               self.btn_new_offset_x, self.btn_new_offset_y,
+                               raw_img=self._raw_btn_new),
+            self._get_btn_rect(self.btn_exit, self.btn_exit_scale_normal,
+                               self.btn_exit_offset_x, self.btn_exit_offset_y,
+                               raw_img=self._raw_btn_exit),
+        ]
+        current_mouse_hover = -1
+        for i, r in enumerate(go_btn_rects):
+            if r.collidepoint(mouse):
+                current_mouse_hover = i
+                break
+        if current_mouse_hover != self._last_hover_index and current_mouse_hover >= 0:
+            if self.audio_manager:
+                self.audio_manager.play_sound("menu_hover")
+        self._last_hover_index = current_mouse_hover if current_mouse_hover >= 0 else self._last_hover_index
         
         # Dark backdrop
         screen.blit(self._overlay, (0, 0))

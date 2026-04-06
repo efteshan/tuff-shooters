@@ -14,7 +14,7 @@ def main():
         (1280, 720),
         pygame.FULLSCREEN | pygame.SCALED
     )
-    pygame.display.set_caption("Duel-Strike")
+    pygame.display.set_caption("Tuff Shooters")
     
     game = Game(screen)
     

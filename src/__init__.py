@@ -1,1 +1,1 @@
-# Duel-Strike game package
+# Tuff Shooters game package

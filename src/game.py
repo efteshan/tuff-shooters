@@ -4,6 +4,7 @@
 
 import pygame
 import random
+import os
 try:
     import cv2
 except ImportError:
@@ -151,31 +152,62 @@ class Game:
         # Pause button rect
         self.pause_btn_rect = pygame.Rect(SCREEN_W//2 - 50, 10, 100, 36)
         
-        # Start with menu music
-        self.audio_manager.play_music()
+        # Music volume levels (menu = full user volume, in-game = 50% of that)
+        self._menu_music_volume = 1.0
+        self._ingame_music_volume = 0.5
+        
+        # Music will start after the loading screen finishes (see update())
 
     def _load_audio(self):
-        """Load all sound effect files. Missing files are silently skipped."""
-        self.audio_manager.load_sound("shoot", "assets/sounds/shoot.wav")
-        self.audio_manager.load_sound("shotgun_fire", "assets/sounds/shotgun_fire.wav")
-        self.audio_manager.load_sound("bazooka_fire", "assets/sounds/bazooka_fire.wav")
-        self.audio_manager.load_sound("knife_swoosh", "assets/sounds/knife_swoosh.wav")
-        self.audio_manager.load_sound("impact", "assets/sounds/impact.wav")
-        self.audio_manager.load_sound("box_burst", "assets/sounds/box_burst.wav")
-        self.audio_manager.load_sound("player_death", "assets/sounds/player_death.wav")
-        self.audio_manager.load_sound("pickup", "assets/sounds/pickup.wav")
-        self.audio_manager.load_sound("pickup_health", "assets/sounds/pickup_health.wav")
-        self.audio_manager.load_sound("pickup_ammo", "assets/sounds/pickup_ammo.wav")
-        self.audio_manager.load_sound("pickup_weapon", "assets/sounds/pickup_weapon.wav")
-        self.audio_manager.load_sound("jump", "assets/sounds/jump.wav")
-        self.audio_manager.load_sound("dash", "assets/sounds/dash.wav")
-        self.audio_manager.load_sound("footstep", "assets/sounds/footstep.wav")
-        self.audio_manager.load_sound("respawn", "assets/sounds/respawn.wav")
-        self.audio_manager.load_sound("win_screen", "assets/sounds/win_screen.wav")
-        self.audio_manager.load_sound("menu_click", "assets/sounds/menu_click.wav")
-        self.audio_manager.load_sound("game_over", "assets/sounds/game_over.wav")
-        self.audio_manager.load_sound("explosion", "assets/sounds/explosion.wav")
-        self.audio_manager.load_music("assets/sounds/bgm_combat.wav")
+        """Load all sound effect files. Missing files are silently skipped.
+        Auto-detects .wav vs .mp3 — prefers .wav, falls back to .wav.mp3 or .mp3."""
+        def _find(name):
+            """Return the first existing path for a sound name."""
+            for ext in [f"{name}.wav", f"{name}.wav.mp3", f"{name}.mp3"]:
+                p = os.path.join("assets", "sounds", ext)
+                if os.path.isfile(p):
+                    return p
+            return os.path.join("assets", "sounds", f"{name}.wav")  # fallback
+        
+        # Weapons
+        self.audio_manager.load_sound("shoot",         _find("shoot"))
+        self.audio_manager.load_sound("shotgun_fire",  _find("shotgun_fire"))
+        self.audio_manager.load_sound("bazooka_fire",  _find("bazooka_fire"))
+        self.audio_manager.load_sound("knife_swoosh",  _find("knife_swoosh"))
+        self.audio_manager.load_sound("impact",        _find("impact"))
+        self.audio_manager.load_sound("bazooka_hit_1", _find("bazooka_hit_1"))
+        self.audio_manager.load_sound("bazooka_hit_2", _find("bazooka_hit_2"))
+        
+        # Environment / destruction
+        self.audio_manager.load_sound("box_burst",     _find("box_burst"))
+        
+        # Player
+        self.audio_manager.load_sound("player_death",  _find("player_death"))
+        # Also try the alternate death filename
+        if not self.audio_manager.sounds.get("player_death"):
+            self.audio_manager.load_sound("player_death", _find("deayh"))
+        self.audio_manager.load_sound("jump",          _find("jump"))
+        self.audio_manager.load_sound("dash",          _find("dash"))
+        self.audio_manager.load_sound("footstep",      _find("footstep"))
+        self.audio_manager.load_sound("respawn",       _find("respawn"))
+        
+        # Pickups
+        self.audio_manager.load_sound("pickup",        _find("pickup"))
+        self.audio_manager.load_sound("pickup_health", _find("pickup_health"))
+        self.audio_manager.load_sound("pickup_ammo",   _find("pickup_ammo"))
+        self.audio_manager.load_sound("pickup_weapon", _find("pickup_weapon"))
+        
+        # UI / Menus
+        self.audio_manager.load_sound("menu_click",    _find("menu_click"))
+        self.audio_manager.load_sound("menu_hover",    _find("menu_hover"))
+        
+        # K.O. / Game Over
+        self.audio_manager.load_sound("ko_fahhh",      _find("ko_fahhh"))
+        self.audio_manager.load_sound("win_screen",    _find("win_screen"))
+        self.audio_manager.load_sound("game_over",     _find("game_over"))
+        
+        # Background music
+        self.audio_manager.load_music(_find("bgm_combat"))
     
     def _init_menu_video(self):
         """Open the looping menu background video. Falls back to static image if unavailable.
@@ -288,6 +320,8 @@ class Game:
                 self.p2_score = 0
                 self.state = "STATE_PLAYING"
                 self.hud.is_paused = False
+                # Lower background music for gameplay
+                self.audio_manager.set_music_volume(self._ingame_music_volume)
             elif action == "head_war":
                 self.head_war_mode = True
                 self.reset_game()
@@ -295,6 +329,8 @@ class Game:
                 self.p2_score = 0
                 self.state = "STATE_PLAYING"
                 self.hud.is_paused = False
+                # Lower background music for gameplay
+                self.audio_manager.set_music_volume(self._ingame_music_volume)
             elif action == "online":
                 self.state = "STATE_ONLINE"
             elif action == "settings":
@@ -358,6 +394,8 @@ class Game:
                 self.p2_score = 0
                 self.state = "STATE_MENU"
                 self.hud.is_paused = False
+                # Restore menu music volume
+                self.audio_manager.set_music_volume(self._menu_music_volume)
 
         elif self.state == "STATE_GAME_OVER":
             action = self.game_over_menu.handle_event(event)
@@ -372,6 +410,8 @@ class Game:
                 self.p2_score = 0
                 self.state = "STATE_MENU"
                 self.hud.is_paused = False
+                # Restore menu music volume
+                self.audio_manager.set_music_volume(self._menu_music_volume)
     
     def update(self, dt):
         """Run one frame of game logic: physics, combat, collisions, timers, spawns."""
@@ -382,6 +422,9 @@ class Game:
                     self.cap.release()
                     self.cap = None
                 self.state = "STATE_MENU"
+                # Start background music now that the loading screen is done
+                self.audio_manager.set_music_volume(self._menu_music_volume)
+                self.audio_manager.play_music(loops=-1)
             return
             
         if self.state in ("STATE_MENU", "STATE_SETTINGS", "STATE_ONLINE"):
@@ -611,7 +654,9 @@ class Game:
                     exp = Explosion(bullet.rect.centerx, bullet.rect.centery, bullet.owner_id)
                     self.bullet_group.add(exp)
                     self.camera.add_shake(15.0, 0.4)
-                    self.audio_manager.play_sound("explosion")
+                    # Randomly pick one of two bazooka hit sounds
+                    hit_sfx = random.choice(["bazooka_hit_1", "bazooka_hit_2"])
+                    self.audio_manager.play_sound(hit_sfx)
                 else:
                     if hit_player:
                         kb_dir = 1 if bullet.vel_x > 0 else -1
@@ -651,6 +696,8 @@ class Game:
         self.ko_timer = 5.0
         self.ko_screen.reset()
         self.state = "STATE_KO"
+        # Play the FAHHH scream sound when K.O. screen appears
+        self.audio_manager.play_sound("ko_fahhh")
         if not self.is_draw:
             self.audio_manager.play_sound("win_screen")
 
@@ -682,6 +729,7 @@ class Game:
                     self.ko_timer = 5.0
                     self.ko_screen.reset()
                     self.state = "STATE_KO"
+                    self.audio_manager.play_sound("ko_fahhh")
                     self.audio_manager.play_sound("win_screen")
                     return
 
@@ -703,6 +751,7 @@ class Game:
                 self.ko_timer = 5.0
                 self.ko_screen.reset()
                 self.state = "STATE_KO"
+                self.audio_manager.play_sound("ko_fahhh")
                 self.audio_manager.play_sound("win_screen")
                 return
             
