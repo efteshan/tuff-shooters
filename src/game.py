@@ -38,7 +38,8 @@ class Game:
     
     def __init__(self, screen):
         self.screen = screen
-        self.state = "STATE_LOADING"
+        self.state = "STATE_INTRO"
+        self.intro_timer = 4.0
         self.loading_timer = 5.0
         self.current_video_frame = None
         self.cap = None
@@ -46,7 +47,7 @@ class Game:
         
         if cv2 is not None:
             try:
-                self.cap = cv2.VideoCapture("assets/loading.mp4")
+                self.cap = cv2.VideoCapture("assets/Video Project 2.mp4")
                 if not self.cap.isOpened():
                     self.cap = None
                 else:
@@ -436,6 +437,31 @@ class Game:
     
     def update(self, dt):
         """Run one frame of game logic: physics, combat, collisions, timers, spawns."""
+        if self.state == "STATE_INTRO":
+            self.intro_timer -= dt
+            if self.intro_timer <= 0:
+                # Release intro video
+                if self.cap:
+                    self.cap.release()
+                    self.cap = None
+                self.current_video_frame = None
+                # Transition to loading screen
+                self.state = "STATE_LOADING"
+                self.loading_timer = 5.0
+                # Load the loading video
+                if cv2 is not None:
+                    try:
+                        self.cap = cv2.VideoCapture("assets/loading.mp4")
+                        if not self.cap.isOpened():
+                            self.cap = None
+                        else:
+                            self.video_fps = self.cap.get(cv2.CAP_PROP_FPS)
+                            if self.video_fps <= 0:
+                                self.video_fps = 30
+                    except Exception:
+                        self.cap = None
+            return
+
         if self.state == "STATE_LOADING":
             self.loading_timer -= dt
             if self.loading_timer <= 0:
@@ -939,10 +965,14 @@ class Game:
     
     def draw(self):
         """Render everything to screen based on current game state."""
-        if self.state == "STATE_LOADING":
+        if self.state in ("STATE_INTRO", "STATE_LOADING"):
             self.screen.fill((0, 0, 0))
             if self.cap:
-                elapsed = 5.0 - self.loading_timer
+                # Use relative elapsed time so each video starts from frame 0
+                if self.state == "STATE_INTRO":
+                    elapsed = 4.0 - self.intro_timer
+                else:
+                    elapsed = 5.0 - self.loading_timer
                 expected_frame = int(elapsed * self.video_fps)
                 current_frame = int(self.cap.get(cv2.CAP_PROP_POS_FRAMES))
                 
