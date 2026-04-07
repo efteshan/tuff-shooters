@@ -512,9 +512,9 @@ def create_bazooka():
     return pygame.transform.smoothscale(s, (44, 20))
 
 def create_cowboy_hat():
-    """Lawman cowboy hat in Espresso Brown #3D2B1F — shortened crown."""
+    """Lawman cowboy hat in Espresso Brown #3D2B1F — fitted brim."""
     S = 4
-    big = pygame.Surface((40*S, 18*S), pygame.SRCALPHA)
+    big = pygame.Surface((40*S, 16*S), pygame.SRCALPHA)
 
     # Espresso Brown palette
     hat_crown = (61,  43, 31)   # #3D2B1F base
@@ -525,12 +525,12 @@ def create_cowboy_hat():
     brim_sh   = (35,  22, 12)
     ol        = (20,  10,  2)
 
-    # Brim (shifted up — now at Y: 9*S)
-    pygame.draw.ellipse(big, brim_c,  (0, 9*S, 40*S, 9*S))
-    pygame.draw.ellipse(big, brim_sh, (3*S, 12*S, 34*S, 5*S))
-    pygame.draw.ellipse(big, (75, 55, 35), (4*S, 9*S, 32*S, 4*S))
-    # Crown (shortened — 10*S tall instead of 14*S)
-    pygame.draw.rect(big, hat_crown, (10*S, 0, 20*S, 10*S), border_radius=3*S)
+    # Brim — flat disc (5*S tall ellipse instead of 9*S)
+    pygame.draw.ellipse(big, brim_c,  (0, 10*S, 40*S, 5*S))
+    pygame.draw.ellipse(big, brim_sh, (4*S, 12*S, 32*S, 3*S))
+    pygame.draw.ellipse(big, (75, 55, 35), (5*S, 10*S, 30*S, 3*S))
+    # Crown (10*S tall, sits on top of the flat brim)
+    pygame.draw.rect(big, hat_crown, (10*S, 0, 20*S, 11*S), border_radius=3*S)
     pygame.draw.rect(big, hat_dark,  (11*S, 0, 18*S, 4*S), border_radius=2*S)
     pygame.draw.rect(big, hat_hi,    (11*S, 1*S, 6*S, 6*S), border_radius=2*S)
     # Crown specular
@@ -538,13 +538,13 @@ def create_cowboy_hat():
     # Crown right shadow
     pygame.draw.rect(big, (30, 20, 10), (25*S, 1*S, 3*S, 7*S), border_radius=2*S)
     # Gold band (at crown/brim junction)
-    pygame.draw.rect(big, hat_band, (10*S, 7*S, 20*S, 3*S))
-    pygame.draw.line(big, (255, 235, 100), (11*S, 7*S), (28*S, 7*S), 2)
+    pygame.draw.rect(big, hat_band, (10*S, 8*S, 20*S, 3*S))
+    pygame.draw.line(big, (255, 235, 100), (11*S, 8*S), (28*S, 8*S), 2)
     # Outlines
-    pygame.draw.ellipse(big, ol, (0, 9*S, 40*S, 9*S), 2)
-    pygame.draw.rect(big, ol, (10*S, 0, 20*S, 10*S), 2, border_radius=3*S)
+    pygame.draw.ellipse(big, ol, (0, 10*S, 40*S, 5*S), 2)
+    pygame.draw.rect(big, ol, (10*S, 0, 20*S, 11*S), 2, border_radius=3*S)
 
-    return pygame.transform.smoothscale(big, (40, 18))
+    return pygame.transform.smoothscale(big, (40, 16))
 
 
 class AnimationManager:
@@ -608,7 +608,7 @@ class SkeletalBody:
         self.current_head_scale = 1.0
         if player_id == 1:
             # ══ THE LAWMAN (Cowboy) ══
-            lawman_skin = (255, 219, 172)   # #FFDBAC Pale Gold
+            lawman_skin = (251, 229, 186)   # #FBE5BA
             lawman_hair = (40, 28, 15)      # dark brown hair
             lawman_brow = (65, 42, 18)
             arm_color   = (232, 232, 228)   # Grey-white shirt sleeves
@@ -625,9 +625,10 @@ class SkeletalBody:
             self.leg_r       = create_leg(leg_color,   shoe=shoe_c, shoe_hi=shoe_h)
             self.leg_l       = create_leg(leg_color_b, shoe=shoe_c, shoe_hi=shoe_h)
             self.cowboy_hat  = create_cowboy_hat()
+            self.hat_base_y_offset = -9   # tweak this to move hat up/down
         else:
             # ══ THE OUTLAW (Bandit) ══
-            outlaw_skin = (210, 180, 140)   # #D2B48C Desert Tan
+            outlaw_skin = (230, 200, 160)   # #E6C8A0 Brighter Desert Tan
             arm_color   = (224, 224, 224)   # #E0E0E0 Platinum Grey
             leg_color   = (224, 224, 224)
             stripe_c    = (0, 0, 0)         # #000000 Black stripes
@@ -1345,7 +1346,7 @@ class SkeletalBody:
         if draw_hat:
             hat_img = self.cowboy_hat_f if flip else self.cowboy_hat
             hx  = head_x + 11 - 20 + head_lean_x
-            hy  = head_y - bob - 14 + int(self.hat_offset_y) + head_y_manual
+            hy  = head_y - bob + self.hat_base_y_offset + int(self.hat_offset_y) + head_y_manual
             # Scale hat proportionally with head — anchor at bottom
             if hs != 1.0:
                 hat_w0, hat_h0 = hat_img.get_size()
