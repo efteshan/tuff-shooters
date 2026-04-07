@@ -19,6 +19,17 @@ from src.constants import (
 )
 
 
+def _create_noise_overlay(w, h, S, alpha=15):
+    """Generate a subtle procedural noise texture for fabric simulation."""
+    noise = pygame.Surface((w*S, h*S), pygame.SRCALPHA)
+    for _ in range(int(w * h * 0.6)):
+        x = random.randint(0, w*S - 1)
+        y = random.randint(0, h*S - 1)
+        v = random.randint(0, 255)
+        pygame.draw.rect(noise, (v, v, v, random.randint(3, alpha)), (x, y, 2, 2))
+    return noise
+
+
 def _draw_head_base(S, skin_color=None, hair_color=None):
     """Draw the head base (everything except eyes) at scale S.
     skin_color and hair_color can be overridden per-player."""
@@ -29,9 +40,19 @@ def _draw_head_base(S, skin_color=None, hair_color=None):
     dark = (max(0,sr-40), max(0,sg-45), max(0,sb-40))
 
     face_pts = [(p[0]*S, p[1]*S) for p in [
-        (11,  1), (20,  8), (21, 15), (16, 22),
-        (11, 24), ( 6, 22), ( 1, 15), ( 2,  8),
+        (11,  1),              # top center forehead
+        (15,  2), (19,  5),    # right forehead slope
+        (21, 10),              # right cheekbone (widest)
+        (20, 15),              # right mid-face
+        (18, 19),              # right jaw angle
+        (14, 23), (11, 24),    # chin
+        ( 8, 23),              # left chin
+        ( 4, 19),              # left jaw angle
+        ( 2, 15),              # left mid-face
+        ( 1, 10),              # left cheekbone (widest)
+        ( 3,  5), ( 7,  2),   # left forehead slope
     ]]
+    # Rounded diamond face — smooth via 4x supersampling
     pygame.draw.polygon(big, skin, face_pts)
     pygame.draw.polygon(big, dark, face_pts, 2)
 
@@ -120,22 +141,22 @@ def create_head(skin_color=None, hair_color=None, brow_color=None):
     sk = skin_color or (210, 170, 115)
     closed_c = (max(0,sk[0]-25), max(0,sk[1]-25), max(0,sk[2]-20))
 
-    # ── EYES ────────────────────────────────────
-    # Left eye
-    pygame.draw.ellipse(big, (240, 240, 235), (6*S, 10*S, 4*S, 3*S))   # sclera
-    pygame.draw.ellipse(big, (55, 35, 20),    (7*S, 10*S, 3*S, 3*S))   # iris
-    pygame.draw.circle(big,  (15, 8, 5),      (8*S + S, 11*S + S), S)  # pupil
-    pygame.draw.circle(big,  (255,255,255),    (8*S, 10*S + S), max(1, S//2))  # specular
-    # Left eyebrow
-    pygame.draw.line(big, bc, (5*S, 9*S), (10*S, 8*S), max(2, S))
+    # ── HUNTER EYES (narrow slits with heavy brows) ──
+    # Left eye — narrow aggressive slit
+    pygame.draw.ellipse(big, (240, 240, 235), (6*S, 10*S, 4*S, 2*S))
+    pygame.draw.ellipse(big, (55, 35, 20),    (7*S, 10*S, 3*S, 2*S))
+    pygame.draw.circle(big,  (15, 8, 5),      (8*S+S//2, 11*S), max(1, S//2))
+    pygame.draw.circle(big,  (255,255,255),    (8*S, 10*S+S//3), max(1, S//3))
+    # Left heavy brow — drops low, partially hooding the eye
+    pygame.draw.line(big, bc, (5*S, 10*S), (10*S, 8*S+S//2), max(3, S+S//2))
 
-    # Right eye
-    pygame.draw.ellipse(big, (240, 240, 235), (12*S, 10*S, 4*S, 3*S))  # sclera
-    pygame.draw.ellipse(big, (55, 35, 20),    (12*S, 10*S, 3*S, 3*S))  # iris
-    pygame.draw.circle(big,  (15, 8, 5),      (13*S + S, 11*S + S), S) # pupil
-    pygame.draw.circle(big,  (255,255,255),    (13*S, 10*S + S), max(1, S//2))  # specular
-    # Right eyebrow
-    pygame.draw.line(big, bc, (12*S, 8*S), (17*S, 9*S), max(2, S))
+    # Right eye — narrow aggressive slit
+    pygame.draw.ellipse(big, (240, 240, 235), (12*S, 10*S, 4*S, 2*S))
+    pygame.draw.ellipse(big, (55, 35, 20),    (12*S, 10*S, 3*S, 2*S))
+    pygame.draw.circle(big,  (15, 8, 5),      (13*S+S//2, 11*S), max(1, S//2))
+    pygame.draw.circle(big,  (255,255,255),    (13*S, 10*S+S//3), max(1, S//3))
+    # Right heavy brow — drops low, partially hooding the eye
+    pygame.draw.line(big, bc, (12*S, 8*S+S//2), (17*S, 10*S), max(3, S+S//2))
 
     return pygame.transform.smoothscale(big, (22, 24))
 
@@ -148,12 +169,12 @@ def create_head_closed(skin_color=None, hair_color=None, brow_color=None):
     sk = skin_color or (210, 170, 115)
     closed_c = (max(0,sk[0]-25), max(0,sk[1]-25), max(0,sk[2]-20))
 
-    # Closed eyes — skin-colored line where eyes would be
+    # Closed hunter eyes — skin-colored line where eyes would be
     pygame.draw.line(big, closed_c, (6*S, 11*S), (10*S, 11*S), max(2, S))
     pygame.draw.line(big, closed_c, (12*S, 11*S), (16*S, 11*S), max(2, S))
-    # Eyebrows (same as open)
-    pygame.draw.line(big, bc, (5*S, 9*S), (10*S, 8*S), max(2, S))
-    pygame.draw.line(big, bc, (12*S, 8*S), (17*S, 9*S), max(2, S))
+    # Heavy low brows (matching open hunter style)
+    pygame.draw.line(big, bc, (5*S, 10*S), (10*S, 8*S+S//2), max(3, S+S//2))
+    pygame.draw.line(big, bc, (12*S, 8*S+S//2), (17*S, 10*S), max(3, S+S//2))
 
     return pygame.transform.smoothscale(big, (22, 24))
 
@@ -198,6 +219,13 @@ def create_outlaw_head():
     # Mask edge highlights
     pygame.draw.line(big, (50, 50, 50), (2*S, 9*S), (20*S, 9*S), 1)
     pygame.draw.line(big, (40, 40, 40), (2*S, 13*S), (20*S, 13*S), 1)
+    # Mask stitching — tiny white dots along edges
+    for _mx in range(3, 20, 2):
+        pygame.draw.circle(big, (200, 200, 200), (_mx*S, 9*S), max(1, S//4))
+        pygame.draw.circle(big, (200, 200, 200), (_mx*S, 13*S), max(1, S//4))
+
+    # ── FOREHEAD SCAR ──
+    pygame.draw.line(big, (130, 40, 40), (8*S, 7*S+S//2), (14*S, 8*S+S//2), 2)
 
     # Eyes visible through mask holes
     # Left eye
@@ -211,12 +239,21 @@ def create_outlaw_head():
     pygame.draw.circle(big,  (15, 8, 5),      (13*S + S, 11*S + S), S)
     pygame.draw.circle(big,  (255,255,255),    (13*S, 10*S + S), max(1, S//2))
 
-    # 2px cel-shaded outline around face perimeter
-    face_pts = [(p[0]*S, p[1]*S) for p in [
-        (11,  1), (20,  8), (21, 15), (16, 22),
-        (11, 24), ( 6, 22), ( 1, 15), ( 2,  8),
+    # ── CHIN STUBBLE (rugged outlaw detail) ──
+    for _sx, _sy in [(7,15),(9,15),(11,15),(13,15),(15,15),
+                     (6,17),(8,17),(10,17),(12,17),(14,17),(16,17),
+                     (7,19),(9,19),(11,19),(13,19),(15,19),
+                     (8,21),(10,21),(12,21),(14,21)]:
+        _stub = pygame.Surface((S, S), pygame.SRCALPHA)
+        pygame.draw.circle(_stub, (50, 35, 20, 80), (S//2, S//2), max(1, S//3))
+        big.blit(_stub, (_sx*S, _sy*S))
+
+    # 2px smooth cel-shaded outline
+    _ol_pts = [(p[0]*S, p[1]*S) for p in [
+        (11,1),(15,2),(19,5),(21,10),(20,15),(18,19),(14,23),(11,24),
+        (8,23),(4,19),(2,15),(1,10),(3,5),(7,2),
     ]]
-    pygame.draw.polygon(big, (0, 0, 0), face_pts, 2)
+    pygame.draw.polygon(big, (0, 0, 0), _ol_pts, 2)
 
     return pygame.transform.smoothscale(big, (22, 24))
 
@@ -259,12 +296,21 @@ def create_outlaw_head_closed():
     pygame.draw.line(big, (60, 60, 60), (6*S, 11*S), (10*S, 11*S), max(2, S))
     pygame.draw.line(big, (60, 60, 60), (12*S, 11*S), (16*S, 11*S), max(2, S))
 
-    # 2px outline
-    face_pts = [(p[0]*S, p[1]*S) for p in [
-        (11,  1), (20,  8), (21, 15), (16, 22),
-        (11, 24), ( 6, 22), ( 1, 15), ( 2,  8),
+    # ── CHIN STUBBLE (rugged outlaw detail) ──
+    for _sx, _sy in [(7,15),(9,15),(11,15),(13,15),(15,15),
+                     (6,17),(8,17),(10,17),(12,17),(14,17),(16,17),
+                     (7,19),(9,19),(11,19),(13,19),(15,19),
+                     (8,21),(10,21),(12,21),(14,21)]:
+        _stub = pygame.Surface((S, S), pygame.SRCALPHA)
+        pygame.draw.circle(_stub, (50, 35, 20, 80), (S//2, S//2), max(1, S//3))
+        big.blit(_stub, (_sx*S, _sy*S))
+
+    # 2px smooth outline
+    _ol_pts = [(p[0]*S, p[1]*S) for p in [
+        (11,1),(15,2),(19,5),(21,10),(20,15),(18,19),(14,23),(11,24),
+        (8,23),(4,19),(2,15),(1,10),(3,5),(7,2),
     ]]
-    pygame.draw.polygon(big, (0, 0, 0), face_pts, 2)
+    pygame.draw.polygon(big, (0, 0, 0), _ol_pts, 2)
 
     return pygame.transform.smoothscale(big, (22, 24))
 
@@ -355,6 +401,17 @@ def create_arm(color, w=8, h=22, skin_color=None, stripe_color=None):
     pygame.draw.line(big, darker, (2*S, 11*S), (5*S, 11*S), 2)
     pygame.draw.line(big, mid_dk, (3*S, 14*S), (3*S, 18*S), 1)
     pygame.draw.line(big, darker, (1*S, 18*S), (5*S, 18*S), 1)
+    # ── VOLUMETRIC ENHANCEMENTS ──
+    _sock = pygame.Surface((6*S, 2*S), pygame.SRCALPHA)
+    pygame.draw.ellipse(_sock, (0, 0, 0, 30), (0, 0, 6*S, 2*S))
+    big.blit(_sock, (1*S, 0))
+    _spec = pygame.Surface((3*S, 4*S), pygame.SRCALPHA)
+    pygame.draw.ellipse(_spec, (255, 180, 80, 25), (0, 0, 3*S, 4*S))
+    big.blit(_spec, (2*S, 2*S))
+    for _i, _a in enumerate([12, 22, 35]):
+        _sh = pygame.Surface((S, 17*S), pygame.SRCALPHA)
+        _sh.fill((30, 20, 60, _a))
+        big.blit(_sh, ((4 + _i)*S, 1*S))
 
     # 2px cel-shaded outline
     pygame.draw.rect(big, (0, 0, 0), (1*S, 0, 6*S, 20*S), 2, border_radius=3*S)
@@ -409,6 +466,13 @@ def create_leg(color, w=11, h=26, shoe=None, shoe_hi=None, stripe_color=None):
     # Thigh highlight
     lighter = tuple(min(255, c + 45) for c in color)
     pygame.draw.rect(big, lighter, (3*S, 1*S, 4*S, 5*S), border_radius=2*S)
+    # ── VOLUMETRIC ENHANCEMENTS ──
+    _hip = pygame.Surface((7*S, 2*S), pygame.SRCALPHA)
+    pygame.draw.ellipse(_hip, (0, 0, 0, 30), (0, 0, 7*S, 2*S))
+    big.blit(_hip, (2*S, 0))
+    _tspec = pygame.Surface((4*S, 4*S), pygame.SRCALPHA)
+    pygame.draw.ellipse(_tspec, (255, 180, 80, 22), (0, 0, 4*S, 4*S))
+    big.blit(_tspec, (3*S, 2*S))
     # Shoe
     pygame.draw.rect(big, shoe_color, (1*S, 21*S, 11*S, 5*S), border_radius=2*S)
     pygame.draw.ellipse(big, toe_color, (5*S, 22*S, 7*S, 3*S))
@@ -535,6 +599,10 @@ def create_cowboy_hat():
     pygame.draw.rect(big, hat_hi,    (11*S, 1*S, 6*S, 6*S), border_radius=2*S)
     # Crown specular
     pygame.draw.ellipse(big, (105, 82, 58), (13*S, 2*S, 5*S, 3*S))
+    # Leather sheen — polished highlight strip
+    _sheen = pygame.Surface((10*S, 2*S), pygame.SRCALPHA)
+    pygame.draw.ellipse(_sheen, (255, 255, 255, 35), (0, 0, 10*S, 2*S))
+    big.blit(_sheen, (12*S, 3*S))
     # Crown right shadow
     pygame.draw.rect(big, (30, 20, 10), (25*S, 1*S, 3*S, 7*S), border_radius=2*S)
     # Gold band (at crown/brim junction)
@@ -758,6 +826,8 @@ class SkeletalBody:
         pygame.draw.line(big, (210, 210, 206), (8*S, 3*S), (8*S, 17*S), 1)
         # Shirt collar V
         pygame.draw.polygon(big, shirt_hi, [(6*S, 0), (10*S, 0), (8*S, 3*S)])
+        # Fabric weave noise texture
+        big.blit(_create_noise_overlay(16, 18, S, alpha=12), (0, 0))
 
         # ── OUTER LAYER: Open vest (left & right panels) ──
         # Left vest panel
@@ -779,6 +849,32 @@ class SkeletalBody:
         for by in [6, 9, 12, 15]:
             pygame.draw.circle(big, (160, 160, 155), (8*S, by*S), max(1, S//2))
             pygame.draw.circle(big, (130, 130, 125), (8*S, by*S), max(1, S//2), 1)
+
+        # ── FABRIC WRINKLES (V-shapes on exposed shirt) ──
+        for _wy in [7, 13]:
+            _wrk = pygame.Surface((4*S, 3*S), pygame.SRCALPHA)
+            pygame.draw.line(_wrk, (0, 0, 0, 22), (0, 0), (2*S, 3*S), 1)
+            pygame.draw.line(_wrk, (0, 0, 0, 22), (4*S, 0), (2*S, 3*S), 1)
+            big.blit(_wrk, (6*S, _wy*S))
+
+        # ── SHERIFF STAR (on left vest panel) ──
+        _scx, _scy = 3*S, 8*S
+        _sr = S + S//2
+        pygame.draw.polygon(big, gold, [
+            (_scx, _scy - _sr), (_scx - _sr, _scy + _sr//2), (_scx + _sr, _scy + _sr//2)])
+        pygame.draw.polygon(big, gold, [
+            (_scx, _scy + _sr), (_scx - _sr, _scy - _sr//2), (_scx + _sr, _scy - _sr//2)])
+        pygame.draw.polygon(big, gold_dk, [
+            (_scx, _scy - _sr), (_scx - _sr, _scy + _sr//2), (_scx + _sr, _scy + _sr//2)], 1)
+        pygame.draw.polygon(big, gold_dk, [
+            (_scx, _scy + _sr), (_scx - _sr, _scy - _sr//2), (_scx + _sr, _scy - _sr//2)], 1)
+        pygame.draw.circle(big, (255, 255, 255), (_scx, _scy), max(1, S//3))
+
+        # ── CONTACT SHADOW (head casting onto chest) ──
+        for _i in range(3):
+            _cs = pygame.Surface((16*S, S), pygame.SRCALPHA)
+            _cs.fill((0, 0, 0, 30 - _i * 10))
+            big.blit(_cs, (0, _i*S))
 
         # ── BELT ──
         pygame.draw.rect(big, belt_c, (0, 18*S, 16*S, 4*S))
@@ -815,11 +911,19 @@ class SkeletalBody:
             pygame.draw.rect(big, stripe, (0, sy, 16*S, stripe_h), border_radius=1)
         # Belt
         pygame.draw.rect(big, belt_c, (0, 18*S, 16*S, 4*S))
-        pygame.draw.rect(big, (50, 50, 50), (6*S, 18*S, 4*S, 4*S))  # buckle area
+        # Metallic silver buckle with specular
+        pygame.draw.rect(big, (192, 192, 192), (6*S, 18*S, 4*S, 4*S))
+        pygame.draw.rect(big, (230, 230, 230), (7*S, 19*S, 2*S, S))
+        pygame.draw.rect(big, (80, 80, 80), (6*S, 18*S, 4*S, 4*S), 1)
         # Center seam
         pygame.draw.line(big, (160, 160, 160), (8*S, 2*S), (8*S, 17*S), 1)
         # Collar line
         pygame.draw.line(big, (140, 140, 140), (2*S, 1*S), (14*S, 1*S), 2)
+        # ── CONTACT SHADOW (head casting onto chest) ──
+        for _i in range(3):
+            _cs = pygame.Surface((16*S, S), pygame.SRCALPHA)
+            _cs.fill((0, 0, 0, 25 - _i * 8))
+            big.blit(_cs, (0, _i*S))
         # 2px black cel-shaded outline
         pygame.draw.rect(big, ol, (0, 0, 16*S, 22*S), 2, border_radius=3*S)
 
