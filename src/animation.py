@@ -19,12 +19,14 @@ from src.constants import (
 )
 
 
-def _draw_head_base(S):
-    """Draw the head base (everything except eyes) at scale S."""
+def _draw_head_base(S, skin_color=None, hair_color=None):
+    """Draw the head base (everything except eyes) at scale S.
+    skin_color and hair_color can be overridden per-player."""
     big = pygame.Surface((22*S, 24*S), pygame.SRCALPHA)
 
-    skin = (210, 170, 115)
-    dark = (170, 125,  75)
+    skin = skin_color or (210, 170, 115)
+    sr, sg, sb = skin
+    dark = (max(0,sr-40), max(0,sg-45), max(0,sb-40))
 
     face_pts = [(p[0]*S, p[1]*S) for p in [
         (11,  1), (20,  8), (21, 15), (16, 22),
@@ -33,34 +35,46 @@ def _draw_head_base(S):
     pygame.draw.polygon(big, skin, face_pts)
     pygame.draw.polygon(big, dark, face_pts, 2)
 
-    # Multi-gradient face shading
-    pygame.draw.ellipse(big, (235, 200, 145), (6*S, 4*S, 10*S, 6*S))    # forehead glow
-    pygame.draw.ellipse(big, (225, 190, 135), (5*S, 8*S, 12*S, 5*S))    # mid-face glow
-    pygame.draw.ellipse(big, (175, 135,  85), (7*S, 19*S, 8*S, 4*S))    # chin shadow
-    # Jaw highlight
-    pygame.draw.ellipse(big, (220, 182, 125), (4*S, 16*S, 6*S, 4*S))
-    # Left temple gradient
-    pygame.draw.line(big, (245, 215, 160), (2*S, 9*S), (2*S, 18*S), 3)
-    pygame.draw.line(big, (230, 195, 140), (3*S, 8*S), (3*S, 19*S), 2)
-    # Right temple shadow
-    pygame.draw.line(big, (160, 115,  65), (19*S, 9*S), (19*S, 18*S), 3)
-    pygame.draw.line(big, (180, 135,  80), (18*S, 8*S), (18*S, 19*S), 2)
+    # Multi-gradient face shading — derived from skin tone
+    glow    = (min(255,sr+25), min(255,sg+30), min(255,sb+30))
+    glow2   = (min(255,sr+15), min(255,sg+20), min(255,sb+20))
+    chin_sh = (max(0,sr-35), max(0,sg-35), max(0,sb-30))
+    jaw_hi  = (min(255,sr+10), min(255,sg+12), min(255,sb+10))
+
+    pygame.draw.ellipse(big, glow,    (6*S, 4*S, 10*S, 6*S))
+    pygame.draw.ellipse(big, glow2,   (5*S, 8*S, 12*S, 5*S))
+    pygame.draw.ellipse(big, chin_sh, (7*S, 19*S, 8*S, 4*S))
+    pygame.draw.ellipse(big, jaw_hi,  (4*S, 16*S, 6*S, 4*S))
+    # Temple gradients
+    t_hi = (min(255,sr+35), min(255,sg+45), min(255,sb+45))
+    t_md = (min(255,sr+20), min(255,sg+25), min(255,sb+25))
+    t_sh = (max(0,sr-50), max(0,sg-55), max(0,sb-50))
+    t_sh2= (max(0,sr-30), max(0,sg-35), max(0,sb-35))
+    pygame.draw.line(big, t_hi,  (2*S, 9*S), (2*S, 18*S), 3)
+    pygame.draw.line(big, t_md,  (3*S, 8*S), (3*S, 19*S), 2)
+    pygame.draw.line(big, t_sh,  (19*S, 9*S), (19*S, 18*S), 3)
+    pygame.draw.line(big, t_sh2, (18*S, 8*S), (18*S, 19*S), 2)
 
     # Cheek volumes
-    pygame.draw.ellipse(big, (225, 185, 130), (3*S, 7*S, 7*S, 7*S))
-    pygame.draw.ellipse(big, (195, 150,  95), (3*S, 14*S, 7*S, 6*S))
-    pygame.draw.ellipse(big, (225, 185, 130), (12*S, 7*S, 7*S, 7*S))
-    pygame.draw.ellipse(big, (195, 150,  95), (12*S, 14*S, 7*S, 6*S))
+    ch_hi = (min(255,sr+15), min(255,sg+15), min(255,sb+15))
+    ch_sh = (max(0,sr-15), max(0,sg-20), max(0,sb-20))
+    pygame.draw.ellipse(big, ch_hi, (3*S, 7*S, 7*S, 7*S))
+    pygame.draw.ellipse(big, ch_sh, (3*S, 14*S, 7*S, 6*S))
+    pygame.draw.ellipse(big, ch_hi, (12*S, 7*S, 7*S, 7*S))
+    pygame.draw.ellipse(big, ch_sh, (12*S, 14*S, 7*S, 6*S))
 
     # Ear suggestion
-    pygame.draw.ellipse(big, (200, 160, 105), (0, 10*S, 3*S, 5*S))
-    pygame.draw.ellipse(big, (185, 142,  90), (0, 11*S, 2*S, 3*S))
-    pygame.draw.ellipse(big, (200, 160, 105), (20*S, 10*S, 3*S, 5*S))
-    pygame.draw.ellipse(big, (185, 142,  90), (21*S, 11*S, 2*S, 3*S))
+    ear   = (max(0,sr-10), max(0,sg-10), max(0,sb-10))
+    ear_d = (max(0,sr-25), max(0,sg-28), max(0,sb-25))
+    pygame.draw.ellipse(big, ear,   (0, 10*S, 3*S, 5*S))
+    pygame.draw.ellipse(big, ear_d, (0, 11*S, 2*S, 3*S))
+    pygame.draw.ellipse(big, ear,   (20*S, 10*S, 3*S, 5*S))
+    pygame.draw.ellipse(big, ear_d, (21*S, 11*S, 2*S, 3*S))
 
     # Hair
-    hair = (40, 28, 15)
-    highlight = (80, 58, 30)
+    hair = hair_color or (40, 28, 15)
+    hr, hg, hb = hair
+    highlight = (min(255,hr+40), min(255,hg+30), min(255,hb+15))
     hair_pts = [(p[0]*S, p[1]*S) for p in [
         (2, 8), (3, 3), (7, 0), (15, 0), (19, 3), (20, 8),
         (17, 6), (14, 2), (8, 2), (5, 6)
@@ -70,31 +84,41 @@ def _draw_head_base(S):
         pygame.draw.polygon(big, hair, [(p[0]*S, p[1]*S) for p in pts])
     pygame.draw.line(big, highlight, (8*S, 1*S), (14*S, 1*S), 3)
     pygame.draw.line(big, highlight, (9*S, 0), (13*S, 0), 2)
-    pygame.draw.line(big, (95, 70, 35), (4*S, 4*S), (3*S, 7*S), 2)
-    pygame.draw.ellipse(big, (55, 38, 20), (9*S, 0, 5*S, 3*S))
+    h_mid = (min(255,hr+55), min(255,hg+42), min(255,hb+20))
+    pygame.draw.line(big, h_mid, (4*S, 4*S), (3*S, 7*S), 2)
+    h_dk = (min(255,hr+15), min(255,hg+10), min(255,hb+5))
+    pygame.draw.ellipse(big, h_dk, (9*S, 0, 5*S, 3*S))
     # Sideburns
     pygame.draw.rect(big, hair, (2*S, 7*S, 2*S, 5*S))
     pygame.draw.rect(big, hair, (18*S, 7*S, 2*S, 5*S))
-    pygame.draw.line(big, (65, 45, 22), (6*S, 3*S), (10*S, 1*S), 1)
-    pygame.draw.line(big, (65, 45, 22), (12*S, 1*S), (16*S, 3*S), 1)
+    sb_line = (min(255,hr+25), min(255,hg+17), min(255,hb+7))
+    pygame.draw.line(big, sb_line, (6*S, 3*S), (10*S, 1*S), 1)
+    pygame.draw.line(big, sb_line, (12*S, 1*S), (16*S, 3*S), 1)
 
     # Nose bridge + nose tip
-    pygame.draw.line(big, (190, 150, 100), (11*S, 10*S), (11*S, 16*S), 1)
-    pygame.draw.ellipse(big, (200, 160, 108), (9*S, 15*S, 4*S, 3*S))  # nose tip
+    nose   = (max(0,sr-20), max(0,sg-20), max(0,sb-15))
+    nose_t = (max(0,sr-10), max(0,sg-10), max(0,sb-7))
+    pygame.draw.line(big, nose, (11*S, 10*S), (11*S, 16*S), 1)
+    pygame.draw.ellipse(big, nose_t, (9*S, 15*S, 4*S, 3*S))
     # Brow ridge
-    pygame.draw.line(big, (185, 145, 95), (5*S, 8*S), (17*S, 8*S), 2)
+    brow = (max(0,sr-25), max(0,sg-25), max(0,sb-20))
+    pygame.draw.line(big, brow, (5*S, 8*S), (17*S, 8*S), 2)
 
-    # Stubble suggestion (subtle dots under nose/on chin)
+    # Stubble suggestion
+    stubble = (max(0,sr-30), max(0,sg-30), max(0,sb-20))
     for sx, sy in [(9,18),(11,18),(13,18),(8,20),(10,20),(12,20),(14,20),(10,22),(12,22)]:
-        pygame.draw.circle(big, (180, 140, 95), (sx*S, sy*S), max(1, S//3))
+        pygame.draw.circle(big, stubble, (sx*S, sy*S), max(1, S//3))
 
     return big
 
 
-def create_head():
+def create_head(skin_color=None, hair_color=None, brow_color=None):
     """Head with eyes OPEN — rendered at 4x."""
     S = 4
-    big = _draw_head_base(S)
+    big = _draw_head_base(S, skin_color=skin_color, hair_color=hair_color)
+    bc = brow_color or (65, 42, 18)
+    sk = skin_color or (210, 170, 115)
+    closed_c = (max(0,sk[0]-25), max(0,sk[1]-25), max(0,sk[2]-20))
 
     # ── EYES ────────────────────────────────────
     # Left eye
@@ -103,7 +127,7 @@ def create_head():
     pygame.draw.circle(big,  (15, 8, 5),      (8*S + S, 11*S + S), S)  # pupil
     pygame.draw.circle(big,  (255,255,255),    (8*S, 10*S + S), max(1, S//2))  # specular
     # Left eyebrow
-    pygame.draw.line(big, (65, 42, 18), (5*S, 9*S), (10*S, 8*S), max(2, S))
+    pygame.draw.line(big, bc, (5*S, 9*S), (10*S, 8*S), max(2, S))
 
     # Right eye
     pygame.draw.ellipse(big, (240, 240, 235), (12*S, 10*S, 4*S, 3*S))  # sclera
@@ -111,22 +135,108 @@ def create_head():
     pygame.draw.circle(big,  (15, 8, 5),      (13*S + S, 11*S + S), S) # pupil
     pygame.draw.circle(big,  (255,255,255),    (13*S, 10*S + S), max(1, S//2))  # specular
     # Right eyebrow
-    pygame.draw.line(big, (65, 42, 18), (12*S, 8*S), (17*S, 9*S), max(2, S))
+    pygame.draw.line(big, bc, (12*S, 8*S), (17*S, 9*S), max(2, S))
 
     return pygame.transform.smoothscale(big, (22, 24))
 
 
-def create_head_closed():
+def create_head_closed(skin_color=None, hair_color=None, brow_color=None):
     """Head with eyes CLOSED (for blinking) — rendered at 4x."""
     S = 4
-    big = _draw_head_base(S)
+    big = _draw_head_base(S, skin_color=skin_color, hair_color=hair_color)
+    bc = brow_color or (65, 42, 18)
+    sk = skin_color or (210, 170, 115)
+    closed_c = (max(0,sk[0]-25), max(0,sk[1]-25), max(0,sk[2]-20))
 
     # Closed eyes — skin-colored line where eyes would be
-    pygame.draw.line(big, (185, 145, 95), (6*S, 11*S), (10*S, 11*S), max(2, S))
-    pygame.draw.line(big, (185, 145, 95), (12*S, 11*S), (16*S, 11*S), max(2, S))
+    pygame.draw.line(big, closed_c, (6*S, 11*S), (10*S, 11*S), max(2, S))
+    pygame.draw.line(big, closed_c, (12*S, 11*S), (16*S, 11*S), max(2, S))
     # Eyebrows (same as open)
-    pygame.draw.line(big, (65, 42, 18), (5*S, 9*S), (10*S, 8*S), max(2, S))
-    pygame.draw.line(big, (65, 42, 18), (12*S, 8*S), (17*S, 9*S), max(2, S))
+    pygame.draw.line(big, bc, (5*S, 9*S), (10*S, 8*S), max(2, S))
+    pygame.draw.line(big, bc, (12*S, 8*S), (17*S, 9*S), max(2, S))
+
+    return pygame.transform.smoothscale(big, (22, 24))
+
+
+def create_outlaw_head():
+    """Outlaw head with bandit mask and black knit cap — eyes OPEN."""
+    S = 4
+    skin = (210, 180, 140)   # #D2B48C Desert Tan
+    cap  = (0, 0, 0)         # Black knit cap
+    mask = (26, 26, 26)      # #1A1A1A Charcoal mask
+    big = _draw_head_base(S, skin_color=skin, hair_color=cap)
+
+    # Black knit cap — covers top of head over the hair
+    cap_pts = [(p[0]*S, p[1]*S) for p in [
+        (2, 7), (3, 2), (7, -1), (15, -1), (19, 2), (20, 7),
+        (17, 5), (14, 1), (8, 1), (5, 5)
+    ]]
+    pygame.draw.polygon(big, cap, cap_pts)
+    # Cap fold / rim at bottom
+    pygame.draw.line(big, (40, 40, 40), (3*S, 6*S), (19*S, 6*S), max(2, S))
+    # Cap texture — subtle horizontal lines
+    for cy in range(1, 6):
+        pygame.draw.line(big, (20, 20, 20), (5*S, cy*S), (17*S, cy*S), 1)
+
+    # Bandit mask — solid charcoal band over the eye area
+    pygame.draw.rect(big, mask, (1*S, 8*S, 20*S, 5*S))
+    # Mask edge highlights
+    pygame.draw.line(big, (50, 50, 50), (2*S, 8*S), (20*S, 8*S), 1)
+
+    # Eyes visible through mask holes
+    # Left eye
+    pygame.draw.ellipse(big, (240, 240, 235), (6*S, 10*S, 4*S, 3*S))
+    pygame.draw.ellipse(big, (55, 35, 20),    (7*S, 10*S, 3*S, 3*S))
+    pygame.draw.circle(big,  (15, 8, 5),      (8*S + S, 11*S + S), S)
+    pygame.draw.circle(big,  (255,255,255),    (8*S, 10*S + S), max(1, S//2))
+    # Right eye
+    pygame.draw.ellipse(big, (240, 240, 235), (12*S, 10*S, 4*S, 3*S))
+    pygame.draw.ellipse(big, (55, 35, 20),    (12*S, 10*S, 3*S, 3*S))
+    pygame.draw.circle(big,  (15, 8, 5),      (13*S + S, 11*S + S), S)
+    pygame.draw.circle(big,  (255,255,255),    (13*S, 10*S + S), max(1, S//2))
+
+    # 2px cel-shaded outline around face perimeter
+    face_pts = [(p[0]*S, p[1]*S) for p in [
+        (11,  1), (20,  8), (21, 15), (16, 22),
+        (11, 24), ( 6, 22), ( 1, 15), ( 2,  8),
+    ]]
+    pygame.draw.polygon(big, (0, 0, 0), face_pts, 2)
+
+    return pygame.transform.smoothscale(big, (22, 24))
+
+
+def create_outlaw_head_closed():
+    """Outlaw head with bandit mask and black knit cap — eyes CLOSED."""
+    S = 4
+    skin = (210, 180, 140)   # #D2B48C
+    cap  = (0, 0, 0)
+    mask = (26, 26, 26)      # #1A1A1A
+    big = _draw_head_base(S, skin_color=skin, hair_color=cap)
+
+    # Black knit cap
+    cap_pts = [(p[0]*S, p[1]*S) for p in [
+        (2, 7), (3, 2), (7, -1), (15, -1), (19, 2), (20, 7),
+        (17, 5), (14, 1), (8, 1), (5, 5)
+    ]]
+    pygame.draw.polygon(big, cap, cap_pts)
+    pygame.draw.line(big, (40, 40, 40), (3*S, 6*S), (19*S, 6*S), max(2, S))
+    for cy in range(1, 6):
+        pygame.draw.line(big, (20, 20, 20), (5*S, cy*S), (17*S, cy*S), 1)
+
+    # Bandit mask
+    pygame.draw.rect(big, mask, (1*S, 8*S, 20*S, 5*S))
+    pygame.draw.line(big, (50, 50, 50), (2*S, 8*S), (20*S, 8*S), 1)
+
+    # Closed eyes through mask
+    pygame.draw.line(big, (60, 60, 60), (6*S, 11*S), (10*S, 11*S), max(2, S))
+    pygame.draw.line(big, (60, 60, 60), (12*S, 11*S), (16*S, 11*S), max(2, S))
+
+    # 2px outline
+    face_pts = [(p[0]*S, p[1]*S) for p in [
+        (11,  1), (20,  8), (21, 15), (16, 22),
+        (11, 24), ( 6, 22), ( 1, 15), ( 2,  8),
+    ]]
+    pygame.draw.polygon(big, (0, 0, 0), face_pts, 2)
 
     return pygame.transform.smoothscale(big, (22, 24))
 
@@ -161,14 +271,14 @@ def create_torso():
     pygame.draw.rect(big, (130, 58, 8), (0, 0, 16*S, 22*S), 2, border_radius=3*S)
     return pygame.transform.smoothscale(big, (16, 22))
 
-def create_arm(color, w=8, h=22):
-    """Smooth 3D arm with hand shape — rendered at 4x."""
+def create_arm(color, w=8, h=22, skin_color=None, stripe_color=None):
+    """Smooth 3D arm with hand shape — rendered at 4x.
+    skin_color overrides hand color. stripe_color adds horizontal stripes."""
     S = 4
     big = pygame.Surface((w*S, h*S), pygame.SRCALPHA)
-    skin       = (210, 170, 115)
-    skin_dk    = (185, 145,  95)
-    skin_sh    = (160, 120,  75)
-    fist_color = tuple(max(0, c - 30) for c in color)
+    skin       = skin_color or (210, 170, 115)
+    skin_dk    = (max(0,skin[0]-25), max(0,skin[1]-25), max(0,skin[2]-20))
+    skin_sh    = (max(0,skin[0]-50), max(0,skin[1]-50), max(0,skin[2]-40))
     darker     = tuple(max(0, c - 55) for c in color)
     mid_dk     = tuple(max(0, c - 35) for c in color)
     lighter    = tuple(min(255, c + 40) for c in color)
@@ -183,45 +293,48 @@ def create_arm(color, w=8, h=22):
     # Wrist narrowing
     pygame.draw.rect(big, color, (1*S, 18*S, 5*S, 2*S), border_radius=S)
 
+    # Horizontal stripes (Outlaw prisoner pattern)
+    if stripe_color:
+        stripe_h = 3 * S   # stripe thickness
+        gap_h = 3 * S      # gap between stripes
+        for sy in range(0, 19*S, stripe_h + gap_h):
+            pygame.draw.rect(big, stripe_color, (1*S, sy, 6*S, stripe_h))
+
     # ── HAND SHAPE ────────────────────────────────
-    # Palm — rounded wider block
+    # Palm
     pygame.draw.rect(big, skin, (0, 19*S, 7*S, 4*S), border_radius=2*S)
-    # Palm highlight — 3D roundness
-    pygame.draw.ellipse(big, (225, 188, 132), (1*S, 19*S, 4*S, 3*S))
-    # Palm shadow — right side
+    palm_hi = (min(255,skin[0]+15), min(255,skin[1]+18), min(255,skin[2]+17))
+    pygame.draw.ellipse(big, palm_hi, (1*S, 19*S, 4*S, 3*S))
     pygame.draw.line(big, skin_sh, (6*S, 19*S), (6*S, 22*S), 2)
-    # Thumb nub — small ellipse on left side
+    # Thumb
     pygame.draw.ellipse(big, skin, (0, 18*S, 3*S, 3*S))
-    pygame.draw.ellipse(big, (220, 180, 125), (0, 18*S, 2*S, 2*S))  # thumb highlight
-    # Finger bumps — 3 small rounded rects along bottom
+    thumb_hi = (min(255,skin[0]+10), min(255,skin[1]+10), min(255,skin[2]+10))
+    pygame.draw.ellipse(big, thumb_hi, (0, 18*S, 2*S, 2*S))
+    # Finger bumps
     for fx in [0, 2, 4]:
         pygame.draw.rect(big, skin_dk, (fx*S + S//2, 22*S, 2*S, 2*S), border_radius=S)
-    # Knuckle ridge line
     pygame.draw.line(big, skin_sh, (1*S, 22*S), (6*S, 22*S), 2)
-    # Palm crease lines
     pygame.draw.line(big, skin_sh, (1*S, 20*S), (5*S, 20*S), 1)
     pygame.draw.line(big, skin_sh, (2*S, 21*S), (5*S, 21*S), 1)
 
     # ── 3D ARM SHADING ────────────────────────────
-    # 3-strip gradient: rim → mid → shadow
     pygame.draw.line(big, rim,    (1*S, 1*S), (1*S, 18*S), 3)
     pygame.draw.line(big, mid_lt, (2*S, 1*S), (2*S, 18*S), 2)
     pygame.draw.line(big, mid_dk, (5*S, 1*S), (5*S, 18*S), 2)
     pygame.draw.line(big, darker, (6*S, 1*S), (6*S, 18*S), 3)
-    # Shoulder specular
     pygame.draw.rect(big, lighter, (2*S, 1*S, 3*S, 5*S), border_radius=2*S)
-    # Mid-arm muscle bulge
     pygame.draw.ellipse(big, mid_lt, (2*S, 5*S, 4*S, 4*S))
-    # Elbow joint shadow
     pygame.draw.line(big, darker, (2*S, 11*S), (5*S, 11*S), 2)
-    # Forearm tendon line
     pygame.draw.line(big, mid_dk, (3*S, 14*S), (3*S, 18*S), 1)
-    # Wrist crease
     pygame.draw.line(big, darker, (1*S, 18*S), (5*S, 18*S), 1)
+
+    # 2px cel-shaded outline
+    pygame.draw.rect(big, (0, 0, 0), (1*S, 0, 6*S, 20*S), 2, border_radius=3*S)
     return pygame.transform.smoothscale(big, (w, h))
 
-def create_leg(color, w=11, h=26):
-    """Smooth 3D leg with multi-gradient shading — rendered at 4x."""
+def create_leg(color, w=11, h=26, shoe=None, shoe_hi=None, stripe_color=None):
+    """Smooth 3D leg with multi-gradient shading — rendered at 4x.
+    shoe/shoe_hi override boot colors. stripe_color adds horizontal stripes."""
     S = 4
     big = pygame.Surface((w*S, h*S), pygame.SRCALPHA)
     thigh_color = color
@@ -230,8 +343,12 @@ def create_leg(color, w=11, h=26):
     mid_dk      = tuple(max(0, c - 35) for c in color)
     rim         = tuple(min(255, c + 65) for c in color)
     mid_lt      = tuple(min(255, c + 30) for c in color)
-    shoe_color  = (62,  38, 12)
-    toe_color   = (185, 88, 28)
+    shoe_color  = shoe    or (62,  38, 12)
+    toe_color   = shoe_hi or (185, 88, 28)
+    shoe_ol     = (max(0,shoe_color[0]-27), max(0,shoe_color[1]-22), max(0,shoe_color[2]-10))
+    boot_rim    = (min(255,shoe_color[0]+33), min(255,shoe_color[1]+24), min(255,shoe_color[2]+13))
+    boot_line   = (min(255,shoe_color[0]+23), min(255,shoe_color[1]+17), min(255,shoe_color[2]+6))
+    heel_c      = (max(0,shoe_color[0]-20), max(0,shoe_color[1]-13), max(0,shoe_color[2]-4))
 
     # Thigh
     pygame.draw.rect(big, thigh_color, (1*S, 0, 9*S, 11*S), border_radius=3*S)
@@ -239,6 +356,14 @@ def create_leg(color, w=11, h=26):
     pygame.draw.rect(big, thigh_color, (2*S, 10*S, 7*S, 5*S))
     # Shin
     pygame.draw.rect(big, shin_color, (2*S, 14*S, 7*S, 8*S), border_radius=2*S)
+
+    # Horizontal stripes (Outlaw prisoner pattern)
+    if stripe_color:
+        stripe_h = 3 * S
+        gap_h = 3 * S
+        for sy in range(0, 21*S, stripe_h + gap_h):
+            pygame.draw.rect(big, stripe_color, (1*S, sy, 9*S, stripe_h))
+
     # 3-strip gradient on thigh
     pygame.draw.line(big, rim,    (2*S, 1*S), (2*S, 9*S), 3)
     pygame.draw.line(big, mid_lt, (3*S, 1*S), (3*S, 9*S), 2)
@@ -251,7 +376,7 @@ def create_leg(color, w=11, h=26):
     pygame.draw.line(big, darker, (7*S, 15*S), (7*S, 20*S), 3)
     # Knee joint shadow
     pygame.draw.line(big, darker, (3*S, 10*S), (7*S, 10*S), 2)
-    # Calf muscle bulge — highlight ellipse
+    # Calf muscle bulge
     pygame.draw.ellipse(big, mid_lt, (3*S, 15*S, 4*S, 4*S))
     # Thigh highlight
     lighter = tuple(min(255, c + 45) for c in color)
@@ -259,14 +384,14 @@ def create_leg(color, w=11, h=26):
     # Shoe
     pygame.draw.rect(big, shoe_color, (1*S, 21*S, 11*S, 5*S), border_radius=2*S)
     pygame.draw.ellipse(big, toe_color, (5*S, 22*S, 7*S, 3*S))
-    pygame.draw.rect(big, (35,16,2), (1*S, 21*S, 11*S, 5*S), 2, border_radius=2*S)
+    pygame.draw.rect(big, shoe_ol, (1*S, 21*S, 11*S, 5*S), 2, border_radius=2*S)
     # Boot top rim highlight
-    pygame.draw.rect(big, (95, 62, 25), (3*S, 21*S, 4*S, 2*S), border_radius=S)
-    pygame.draw.line(big, (85, 55, 18), (2*S, 21*S), (9*S, 21*S), 1)
+    pygame.draw.rect(big, boot_rim, (3*S, 21*S, 4*S, 2*S), border_radius=S)
+    pygame.draw.line(big, boot_line, (2*S, 21*S), (9*S, 21*S), 1)
     # Ankle crease
     pygame.draw.line(big, darker, (2*S, 21*S), (8*S, 21*S), 1)
     # Heel detail
-    pygame.draw.rect(big, (42, 25, 8), (1*S, 24*S, 4*S, 2*S), border_radius=S)
+    pygame.draw.rect(big, heel_c, (1*S, 24*S, 4*S, 2*S), border_radius=S)
     # Mid-shin taper highlight
     pygame.draw.line(big, rim, (4*S, 17*S), (6*S, 17*S), 1)
     return pygame.transform.smoothscale(big, (w, h))
@@ -359,33 +484,34 @@ def create_bazooka():
     return pygame.transform.smoothscale(s, (44, 20))
 
 def create_cowboy_hat():
-    """Smooth 3D cowboy hat — rendered at 4x then downsampled."""
+    """Lawman cowboy hat in Espresso Brown #3D2B1F — rendered at 4x."""
     S = 4
     big = pygame.Surface((40*S, 22*S), pygame.SRCALPHA)
 
-    hat_crown = (95,  65, 25)
-    hat_dark  = (65,  42, 12)
-    hat_band  = (192, 162, 82)
-    hat_hi    = (125,  90, 35)
-    brim_c    = (78,  52, 16)
-    brim_sh   = (48,  30,  6)
-    ol        = (35,  16,  2)
+    # Espresso Brown palette
+    hat_crown = (61,  43, 31)   # #3D2B1F base
+    hat_dark  = (40,  28, 18)
+    hat_hi    = (85,  62, 42)
+    hat_band  = (255, 215, 0)   # #FFD700 Gold band
+    brim_c    = (52,  36, 22)
+    brim_sh   = (35,  22, 12)
+    ol        = (20,  10,  2)
 
     # Brim
     pygame.draw.ellipse(big, brim_c,  (0, 12*S, 40*S, 9*S))
     pygame.draw.ellipse(big, brim_sh, (3*S, 15*S, 34*S, 5*S))
-    pygame.draw.ellipse(big, (105, 75, 28), (4*S, 12*S, 32*S, 4*S))
+    pygame.draw.ellipse(big, (75, 55, 35), (4*S, 12*S, 32*S, 4*S))
     # Crown
     pygame.draw.rect(big, hat_crown, (10*S, 0, 20*S, 14*S), border_radius=4*S)
     pygame.draw.rect(big, hat_dark,  (11*S, 0, 18*S, 5*S), border_radius=3*S)
     pygame.draw.rect(big, hat_hi,    (11*S, 2*S, 6*S, 8*S), border_radius=2*S)
     # Crown specular
-    pygame.draw.ellipse(big, (155, 118, 55), (13*S, 3*S, 5*S, 4*S))
+    pygame.draw.ellipse(big, (105, 82, 58), (13*S, 3*S, 5*S, 4*S))
     # Crown right shadow
-    pygame.draw.rect(big, (72, 48, 15), (25*S, 2*S, 3*S, 10*S), border_radius=2*S)
-    # Band
+    pygame.draw.rect(big, (30, 20, 10), (25*S, 2*S, 3*S, 10*S), border_radius=2*S)
+    # Gold band
     pygame.draw.rect(big, hat_band, (10*S, 10*S, 20*S, 3*S))
-    pygame.draw.line(big, (215,185,105), (11*S,10*S), (28*S,10*S), 2)
+    pygame.draw.line(big, (255, 235, 100), (11*S,10*S), (28*S,10*S), 2)
     # Outlines
     pygame.draw.ellipse(big, ol, (0, 12*S, 40*S, 9*S), 2)
     pygame.draw.rect(big, ol, (10*S, 0, 20*S, 14*S), 2, border_radius=4*S)
@@ -453,41 +579,50 @@ class SkeletalBody:
         self.player_id = player_id
         self.current_head_scale = 1.0
         if player_id == 1:
-            # Cowboy — brown jacket arms, brown trouser legs
-            arm_r_color  = (148, 108,  42)   # brown jacket sleeve
-            arm_l_color  = (148, 108,  42)   # brown jacket sleeve
-            leg_r_color  = (108,  78,  32)   # brown trouser front
-            leg_l_color  = ( 88,  62,  22)   # brown trouser back (slightly darker)
-        else:
-            arm_r_color  = (170,  50, 200)
-            arm_l_color  = ( 70, 180,  50)
-            leg_r_color  = (200,  45,  45)
-            leg_l_color  = (215, 195,  25)
+            # ══ THE LAWMAN (Cowboy) ══
+            lawman_skin = (255, 219, 172)   # #FFDBAC Pale Gold
+            lawman_hair = (40, 28, 15)      # dark brown hair
+            lawman_brow = (65, 42, 18)
+            arm_color   = (128, 0, 0)       # #800000 Maroon arms
+            leg_color   = (47, 79, 79)      # #2F4F4F Dark Slate Grey legs
+            leg_color_b = (37, 65, 65)      # slightly darker back leg
+            shoe_c      = (75, 54, 33)      # #4B3621 Dark Leather
+            shoe_h      = (120, 85, 55)
 
-        self.head      = create_head()
-        self.head_closed = create_head_closed()  # blink variant
-        if player_id == 1:
-            self.torso = self._make_cowboy_torso()
+            self.head        = create_head(skin_color=lawman_skin, hair_color=lawman_hair, brow_color=lawman_brow)
+            self.head_closed = create_head_closed(skin_color=lawman_skin, hair_color=lawman_hair, brow_color=lawman_brow)
+            self.torso       = self._make_cowboy_torso()
+            self.arm_r       = create_arm(arm_color, skin_color=lawman_skin)
+            self.arm_l       = create_arm(arm_color, skin_color=lawman_skin)
+            self.leg_r       = create_leg(leg_color,   shoe=shoe_c, shoe_hi=shoe_h)
+            self.leg_l       = create_leg(leg_color_b, shoe=shoe_c, shoe_hi=shoe_h)
+            self.cowboy_hat  = create_cowboy_hat()
         else:
-            self.torso = create_torso()
-        self.arm_r     = create_arm(arm_r_color)
-        self.arm_l     = create_arm(arm_l_color)
-        self.leg_r     = create_leg(leg_r_color)
-        self.leg_l     = create_leg(leg_l_color)
+            # ══ THE OUTLAW (Bandit) ══
+            outlaw_skin = (210, 180, 140)   # #D2B48C Desert Tan
+            arm_color   = (224, 224, 224)   # #E0E0E0 Platinum Grey
+            leg_color   = (224, 224, 224)
+            stripe_c    = (0, 0, 0)         # #000000 Black stripes
+            shoe_c      = (26, 26, 26)      # #1A1A1A Black Stealth Boots
+            shoe_h      = (50, 50, 50)
+
+            self.head        = create_outlaw_head()
+            self.head_closed = create_outlaw_head_closed()
+            self.torso       = self._make_outlaw_torso()
+            self.arm_r       = create_arm(arm_color, skin_color=outlaw_skin, stripe_color=stripe_c)
+            self.arm_l       = create_arm(arm_color, skin_color=outlaw_skin, stripe_color=stripe_c)
+            self.leg_r       = create_leg(leg_color, shoe=shoe_c, shoe_hi=shoe_h, stripe_color=stripe_c)
+            self.leg_l       = create_leg(leg_color, shoe=shoe_c, shoe_hi=shoe_h, stripe_color=stripe_c)
+            self.cowboy_hat  = None
+
+        # Shared weapon sprites (same for both characters)
         self.gun_surf  = create_gun()
         self.shotgun_surf = create_shotgun()
         self.shotgun_surf_f = pygame.transform.flip(self.shotgun_surf, True, False)
         self.bazooka_surf = create_bazooka()
         self.bazooka_surf_f = pygame.transform.flip(self.bazooka_surf, True, False)
         self.knife_surf = create_knife()
-        
         self.current_weapon = "pistol"
-
-        # Cowboy hat for P1 only
-        if player_id == 1:
-            self.cowboy_hat = create_cowboy_hat()
-        else:
-            self.cowboy_hat = None
 
         # ── Pre-cache flipped sprites for performance ──
         self.head_f        = pygame.transform.flip(self.head, True, False)
@@ -571,48 +706,78 @@ class SkeletalBody:
             self._shadow_layers.append((ss, sw, sh))
 
     def _make_cowboy_torso(self):
-        """Smooth 3D cowboy jacket — rendered at 4x then downsampled."""
+        """Lawman torso — Deep Crimson #B22222 with Gold #FFD700 accents."""
         S = 4
         big     = pygame.Surface((16*S, 22*S), pygame.SRCALPHA)
-        jacket  = (148, 108,  42)
-        jkt_dk  = ( 95,  68,  18)
-        jkt_hi  = (178, 142,  65)
-        bandana = (195,  42,  32)
-        belt    = (105, 105, 105)
-        buckle  = (208, 182,  62)
-        ol      = ( 35,  16,   2)
+        jacket  = (178, 34, 34)     # #B22222 Firebrick Red
+        jkt_dk  = (128, 20, 20)
+        jkt_hi  = (210, 60, 60)
+        gold    = (255, 215, 0)     # #FFD700 Gold
+        gold_dk = (200, 170, 0)
+        belt_c  = (50, 50, 50)      # dark belt
+        ol      = (0, 0, 0)         # cel-shaded black outline
 
+        # Main body fill
         pygame.draw.rect(big, jacket, (0, 0, 16*S, 22*S), border_radius=3*S)
         pygame.draw.rect(big, jkt_hi, (1*S, 1*S, 6*S, 8*S), border_radius=2*S)
         # 3D rim light + shadow
-        pygame.draw.rect(big, (188, 152, 72), (1*S, 2*S, 2*S, 14*S), border_radius=S)
-        pygame.draw.rect(big, (108,  75, 22), (13*S, 2*S, 2*S, 14*S), border_radius=S)
+        pygame.draw.rect(big, (220, 75, 75), (1*S, 2*S, 2*S, 14*S), border_radius=S)
+        pygame.draw.rect(big, (100, 15, 15), (13*S, 2*S, 2*S, 14*S), border_radius=S)
         # V lapels
         pygame.draw.polygon(big, jkt_dk,
             [(5*S,0),(8*S,7*S),(7*S,22*S),(5*S,22*S),(4*S,7*S)])
         pygame.draw.polygon(big, jkt_dk,
             [(11*S,0),(8*S,7*S),(9*S,22*S),(11*S,22*S),(12*S,7*S)])
-        # Red bandana
-        pygame.draw.polygon(big, bandana, [(5*S,0),(11*S,0),(8*S,6*S)])
-        pygame.draw.ellipse(big, (225, 72, 52), (7*S, 1*S, 3*S, 2*S))
-        # Bandana fold lines
-        pygame.draw.line(big, (165, 32, 22), (6*S, 2*S), (8*S, 5*S), 1)
-        pygame.draw.line(big, (165, 32, 22), (10*S, 2*S), (8*S, 5*S), 1)
+        # Collar V
+        pygame.draw.polygon(big, (160, 28, 28), [(5*S,0),(11*S,0),(8*S,5*S)])
+        # Gold waistcoat buttons
+        for by in [7, 10, 13]:
+            pygame.draw.circle(big, gold, (8*S, by*S), S)
+            pygame.draw.circle(big, gold_dk, (8*S, by*S), S, 1)
         # Belt
-        pygame.draw.rect(big, belt, (0, 18*S, 16*S, 4*S))
-        pygame.draw.rect(big, buckle, (6*S, 18*S, 4*S, 4*S))
-        pygame.draw.rect(big, (238, 218, 105), (7*S, 19*S, 2*S, 2*S))
-        # Belt holes — tiny dots
+        pygame.draw.rect(big, belt_c, (0, 18*S, 16*S, 4*S))
+        # Gold buckle
+        pygame.draw.rect(big, gold, (6*S, 18*S, 4*S, 4*S))
+        pygame.draw.rect(big, gold_dk, (7*S, 19*S, 2*S, 2*S))
+        # Belt holes
         for bx in [3, 5, 11, 13]:
-            pygame.draw.circle(big, (80, 80, 80), (bx*S, 20*S), S//2)
+            pygame.draw.circle(big, (30, 30, 30), (bx*S, 20*S), S//2)
         # Pocket flap on right side
         pygame.draw.line(big, jkt_dk, (11*S, 12*S), (14*S, 12*S), 2)
         pygame.draw.line(big, jkt_dk, (11*S, 12*S), (11*S, 15*S), 1)
         pygame.draw.line(big, jkt_dk, (14*S, 12*S), (14*S, 15*S), 1)
-        # Chest button
-        pygame.draw.circle(big, (175, 138, 58), (8*S, 9*S), S)
-        pygame.draw.circle(big, (125, 92, 32), (8*S, 9*S), S, 1)
-        # Outline
+        # 2px black cel-shaded outline
+        pygame.draw.rect(big, ol, (0, 0, 16*S, 22*S), 2, border_radius=3*S)
+
+        return pygame.transform.smoothscale(big, (16, 22))
+
+    def _make_outlaw_torso(self):
+        """Outlaw torso — Platinum Grey #E0E0E0 with Black #000000 stripes."""
+        S = 4
+        big     = pygame.Surface((16*S, 22*S), pygame.SRCALPHA)
+        base    = (224, 224, 224)    # #E0E0E0 Platinum Grey
+        stripe  = (0, 0, 0)          # #000000 Black stripes
+        belt_c  = (26, 26, 26)       # #1A1A1A dark belt
+        ol      = (0, 0, 0)          # outline
+
+        # Main body fill
+        pygame.draw.rect(big, base, (0, 0, 16*S, 22*S), border_radius=3*S)
+        # 3D shading
+        pygame.draw.rect(big, (240, 240, 240), (1*S, 1*S, 5*S, 14*S), border_radius=S)
+        pygame.draw.rect(big, (180, 180, 180), (12*S, 1*S, 3*S, 14*S), border_radius=S)
+        # Thick horizontal black stripes
+        stripe_h = 3 * S
+        gap_h = 3 * S
+        for sy in range(0, 18*S, stripe_h + gap_h):
+            pygame.draw.rect(big, stripe, (0, sy, 16*S, stripe_h), border_radius=1)
+        # Belt
+        pygame.draw.rect(big, belt_c, (0, 18*S, 16*S, 4*S))
+        pygame.draw.rect(big, (50, 50, 50), (6*S, 18*S, 4*S, 4*S))  # buckle area
+        # Center seam
+        pygame.draw.line(big, (160, 160, 160), (8*S, 2*S), (8*S, 17*S), 1)
+        # Collar line
+        pygame.draw.line(big, (140, 140, 140), (2*S, 1*S), (14*S, 1*S), 2)
+        # 2px black cel-shaded outline
         pygame.draw.rect(big, ol, (0, 0, 16*S, 22*S), 2, border_radius=3*S)
 
         return pygame.transform.smoothscale(big, (16, 22))

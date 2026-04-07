@@ -1484,7 +1484,7 @@ class OnlineMenu:
         
         # ── TEXT CUSTOMIZATION ──
         self.text_color            = (220, 200, 160)  # #dcc8a0
-        self.text_message          = "We are woking on it."
+        self.text_message          = "We are working on it"
         
         # ================================================================
         # ██  END OF CONFIGURATION HUB  ██
