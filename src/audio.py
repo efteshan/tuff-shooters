@@ -40,14 +40,21 @@ class AudioManager:
             except Exception:
                 pass
 
+    # Raw music is significantly louder than SFX in pygame.
+    # This multiplier scales the user's 0.0-1.0 range down so sound effects
+    # remain audible. A value of 0.3 means user "100%" = 30% raw volume.
+    _MUSIC_VOLUME_MULTIPLIER = 0.3
+
     def set_music_volume(self, volume):
-        """Set music volume. volume is a float from 0.0 (mute) to 1.0 (full)."""
-        vol = max(0.0, min(1.0, volume))
-        pygame.mixer.music.set_volume(vol)
+        """Set music volume. volume is a float from 0.0 (mute) to 1.0 (full).
+        Internally scaled by _MUSIC_VOLUME_MULTIPLIER so SFX stay punchy."""
+        self._music_volume_logical = max(0.0, min(1.0, volume))
+        raw = self._music_volume_logical * self._MUSIC_VOLUME_MULTIPLIER
+        pygame.mixer.music.set_volume(raw)
 
     def get_music_volume(self):
-        """Return the current music volume (0.0 – 1.0)."""
-        return pygame.mixer.music.get_volume()
+        """Return the logical music volume (0.0 – 1.0) as set by the user."""
+        return getattr(self, '_music_volume_logical', pygame.mixer.music.get_volume())
 
     def set_sfx_volume(self, volume):
         """Set SFX volume. volume is a float from 0.0 (mute) to 1.0 (full).

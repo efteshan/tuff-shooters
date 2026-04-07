@@ -152,11 +152,20 @@ class Game:
         # Pause button rect
         self.pause_btn_rect = pygame.Rect(SCREEN_W//2 - 50, 10, 100, 36)
         
-        # Music volume levels (menu = full user volume, in-game = 50% of that)
-        self._menu_music_volume = 1.0
-        self._ingame_music_volume = 0.5
+        # In-game music plays at 50% of the user's chosen volume
+        self._ingame_music_factor = 0.5
         
         # Music will start after the loading screen finishes (see update())
+    
+    def _sync_music_volume(self, in_game=False):
+        """Read the user's volume from the settings panel and apply it.
+        If in_game is True, the volume is halved so SFX stand out during gameplay."""
+        user_vol = self.settings_menu.music_volume
+        if self.settings_menu._music_muted:
+            user_vol = 0.0
+        if in_game:
+            user_vol *= self._ingame_music_factor
+        self.audio_manager.set_music_volume(user_vol)
 
     def _load_audio(self):
         """Load all sound effect files. Missing files are silently skipped.
@@ -170,13 +179,15 @@ class Game:
             return os.path.join("assets", "sounds", f"{name}.wav")  # fallback
         
         # Weapons
-        self.audio_manager.load_sound("shoot",         _find("shoot"))
-        self.audio_manager.load_sound("shotgun_fire",  _find("shotgun_fire"))
-        self.audio_manager.load_sound("bazooka_fire",  _find("bazooka_fire"))
-        self.audio_manager.load_sound("knife_swoosh",  _find("knife_swoosh"))
-        self.audio_manager.load_sound("impact",        _find("impact"))
-        self.audio_manager.load_sound("bazooka_hit_1", _find("bazooka_hit_1"))
-        self.audio_manager.load_sound("bazooka_hit_2", _find("bazooka_hit_2"))
+        self.audio_manager.load_sound("shoot",           _find("shoot"))
+        self.audio_manager.load_sound("shotgun_fire",    _find("shotgun_fire"))
+        self.audio_manager.load_sound("bazooka_fire",    _find("bazooka_fire"))
+        self.audio_manager.load_sound("knife_swoosh_1",  _find("knife_swoosh_1"))
+        self.audio_manager.load_sound("knife_swoosh_2",  _find("knife_swoosh_2"))
+        self.audio_manager.load_sound("knife_swoosh_3",  _find("knife_swoosh_3"))
+        self.audio_manager.load_sound("impact",          _find("impact"))
+        self.audio_manager.load_sound("bazooka_hit_1",   _find("bazooka_hit_1"))
+        self.audio_manager.load_sound("bazooka_hit_2",   _find("bazooka_hit_2"))
         
         # Environment / destruction
         self.audio_manager.load_sound("box_burst",     _find("box_burst"))
@@ -202,9 +213,14 @@ class Game:
         self.audio_manager.load_sound("menu_hover",    _find("menu_hover"))
         
         # K.O. / Game Over
-        self.audio_manager.load_sound("ko_fahhh",      _find("ko_fahhh"))
-        self.audio_manager.load_sound("win_screen",    _find("win_screen"))
-        self.audio_manager.load_sound("game_over",     _find("game_over"))
+        self.audio_manager.load_sound("ko_fahhh",       _find("ko_fahhh"))
+        self.audio_manager.load_sound("win_screen",     _find("win_screen"))
+        self.audio_manager.load_sound("game_over",      _find("game_over"))
+        
+        # Action events
+        self.audio_manager.load_sound("cloud_bounce",   _find("cloud_bounce"))
+        self.audio_manager.load_sound("fall_damage",    _find("fall_damage"))
+        self.audio_manager.load_sound("head_increase",  _find("head_increase"))
         
         # Background music
         self.audio_manager.load_music(_find("bgm_combat"))
@@ -321,7 +337,7 @@ class Game:
                 self.state = "STATE_PLAYING"
                 self.hud.is_paused = False
                 # Lower background music for gameplay
-                self.audio_manager.set_music_volume(self._ingame_music_volume)
+                self._sync_music_volume(in_game=True)
             elif action == "head_war":
                 self.head_war_mode = True
                 self.reset_game()
@@ -330,7 +346,7 @@ class Game:
                 self.state = "STATE_PLAYING"
                 self.hud.is_paused = False
                 # Lower background music for gameplay
-                self.audio_manager.set_music_volume(self._ingame_music_volume)
+                self._sync_music_volume(in_game=True)
             elif action == "online":
                 self.state = "STATE_ONLINE"
             elif action == "settings":
@@ -364,23 +380,28 @@ class Game:
                 if self.pause_btn_rect.collidepoint(event.pos):
                     self.state = "STATE_PAUSED"
                     self.hud.is_paused = True
+                    self.audio_manager.play_sound("menu_click")
             
             if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:   
                 self.state = "STATE_PAUSED"
                 self.hud.is_paused = True
+                self.audio_manager.play_sound("menu_click")
                 
             if getattr(event, 'type', None) == pygame.JOYBUTTONDOWN and event.button == JOY_BTN_Y:
                 self.state = "STATE_PAUSED"
                 self.hud.is_paused = True
+                self.audio_manager.play_sound("menu_click")
         
         elif self.state == "STATE_PAUSED":
             if getattr(event, 'type', None) == pygame.JOYBUTTONDOWN and event.button == JOY_BTN_Y:
                 self.state = "STATE_PLAYING"
                 self.hud.is_paused = False
+                self.audio_manager.play_sound("menu_click")
                 return
                 
             action = self.pause_menu.handle_event(event)
             if action == "continue":
+                self.audio_manager.play_sound("menu_click")
                 self.state = "STATE_PLAYING"
                 self.hud.is_paused = False
             elif action == "new":
@@ -395,7 +416,7 @@ class Game:
                 self.state = "STATE_MENU"
                 self.hud.is_paused = False
                 # Restore menu music volume
-                self.audio_manager.set_music_volume(self._menu_music_volume)
+                self._sync_music_volume(in_game=False)
 
         elif self.state == "STATE_GAME_OVER":
             action = self.game_over_menu.handle_event(event)
@@ -411,7 +432,7 @@ class Game:
                 self.state = "STATE_MENU"
                 self.hud.is_paused = False
                 # Restore menu music volume
-                self.audio_manager.set_music_volume(self._menu_music_volume)
+                self._sync_music_volume(in_game=False)
     
     def update(self, dt):
         """Run one frame of game logic: physics, combat, collisions, timers, spawns."""
@@ -423,7 +444,7 @@ class Game:
                     self.cap = None
                 self.state = "STATE_MENU"
                 # Start background music now that the loading screen is done
-                self.audio_manager.set_music_volume(self._menu_music_volume)
+                self._sync_music_volume(in_game=False)
                 self.audio_manager.play_music(loops=-1)
             return
             
@@ -507,6 +528,10 @@ class Game:
                     player.check_single_obstacle_collision(self.box)
                 player.check_trampoline_collision(
                     self.trampoline_clouds)
+                # Fall damage sound — triggered by hard landing in physics
+                if player._fall_damage_pending > 0:
+                    self.audio_manager.play_sound("fall_damage")
+                    player._fall_damage_pending = 0
                 player.check_pickups(self.health_group, self.ammo_group)
                 # Weapon pickup check
                 if player.alive:
@@ -718,6 +743,7 @@ class Game:
                 killer.head_streak += 1
                 killer.head_scale = killer_base + killer.head_streak * HEAD_SIZE_STEP
                 killer.body.current_head_scale = killer.head_scale
+                self.audio_manager.play_sound("head_increase")
                 
                 if victim_id == 1:
                     self.p2_score += 1

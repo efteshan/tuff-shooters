@@ -1,6 +1,7 @@
 # src/player.py — Player character: movement, combat, weapons, collision, and death/respawn.
 
 import pygame
+import random
 from src.physics import PhysicsObject
 from src.animation import SkeletalBody
 from src.bullet import Bullet, ShotgunPellet, Rocket
@@ -63,6 +64,7 @@ class Player(PhysicsObject, pygame.sprite.Sprite):
         
         # Audio
         self.footstep_timer = 0.0
+        self._last_knife_sound = None  # tracks last knife swoosh to prevent repeats
 
         # Dash state
         self.dash_timer = 0.0
@@ -311,7 +313,12 @@ class Player(PhysicsObject, pygame.sprite.Sprite):
         self.knife_hit_pending = True
         self.knife_hit_timer = 0.1
         if self.audio_manager:
-            self.audio_manager.play_sound("knife_swoosh")
+            # Pick a random knife swoosh that isn't the same as the last one
+            knife_sounds = ["knife_swoosh_1", "knife_swoosh_2", "knife_swoosh_3"]
+            choices = [s for s in knife_sounds if s != self._last_knife_sound]
+            pick = random.choice(choices) if choices else knife_sounds[0]
+            self._last_knife_sound = pick
+            self.audio_manager.play_sound(pick)
     
     def try_shotgun(self):
         """Fire shotgun: spawns multiple pellets in a spread pattern. Auto-drops when ammo runs out."""
@@ -611,6 +618,8 @@ class Player(PhysicsObject, pygame.sprite.Sprite):
                 self.vel_y    = -cloud.bounce_force
                 self.on_ground = False
                 self.state     = "JUMPING"
+                if self.audio_manager:
+                    self.audio_manager.play_sound("cloud_bounce")
                 self.update_rect()
                 break
     

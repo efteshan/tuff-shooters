@@ -40,6 +40,9 @@ class PhysicsObject:
         center_x = self.x + self.width / 2
         on_walkable = (center_x >= GROUND_LEFT and center_x <= GROUND_RIGHT)
         if on_walkable and self.y >= GROUND_Y - self.height:
+            # Check for hard landing before resetting velocity
+            if self.vel_y > 18.0 and not self.on_ground:
+                self._fall_damage_pending += 1
             self.y = GROUND_Y - self.height + PLAYER_GROUND_Y_OFFSET
             self.vel_y = 0
             self.on_ground = True
