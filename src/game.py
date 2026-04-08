@@ -39,7 +39,7 @@ class Game:
     def __init__(self, screen):
         self.screen = screen
         self.state = "STATE_INTRO"
-        self.intro_timer = 4.0
+        self.intro_timer = 6.3
         self.loading_timer = 5.0
         self.current_video_frame = None
         self.cap = None
@@ -117,6 +117,7 @@ class Game:
         # Initialize sprite groups
         self.bullet_group = pygame.sprite.Group()
         self.shotgun_group = pygame.sprite.Group()
+        self.next_box_weapon_drop = "shotgun"  # alternates: shotgun -> bazooka -> shotgun
         self.health_group = pygame.sprite.Group()
         self.ammo_group = pygame.sprite.Group()
         
@@ -157,6 +158,9 @@ class Game:
         self._ingame_music_factor = 0.5
         
         # Music will start after the loading screen finishes (see update())
+        
+        # Fire intro sound effect at T=0 — perfectly synced with the first video frame
+        self.audio_manager.play_sound("intro_sound")
     
     def _sync_music_volume(self, in_game=False):
         """Read the user's volume from the settings panel and apply it.
@@ -225,6 +229,9 @@ class Game:
         
         # Background music
         self.audio_manager.load_music(_find("bgm_combat"))
+        
+        # Intro screen
+        self.audio_manager.load_sound("intro_sound",  _find("intro_sound"))
     
     def _init_menu_video(self):
         """Open the looping menu background video. Falls back to static image if unavailable.
@@ -848,17 +855,19 @@ class Game:
         player.update_rect()
     
     def _spawn_shotgun_from_box(self):
-        """Drop a random weapon pickup (shotgun or bazooka) where the box was destroyed."""
+        """Drop a weapon pickup where the box was destroyed. Alternates: shotgun -> bazooka -> shotgun."""
         
         self.shotgun_group.empty()
         
-        if random.random() < 0.3: # 30% chance for bazooka
+        if self.next_box_weapon_drop == "bazooka":
             sg = BazookaPickup(BOX_X, GROUND_Y)
             self.shotgun_group.add(sg)
+            self.next_box_weapon_drop = "shotgun"
             print(f"[BAZOOKA] Spawned at ({BOX_X}, {GROUND_Y}) ")
         else:
             sg = ShotgunPickup(BOX_X, GROUND_Y)
             self.shotgun_group.add(sg)
+            self.next_box_weapon_drop = "bazooka"
             print(f"[SHOTGUN] Spawned at ({BOX_X}, {GROUND_Y}) ")
     
     def reset_game(self):
@@ -970,7 +979,7 @@ class Game:
             if self.cap:
                 # Use relative elapsed time so each video starts from frame 0
                 if self.state == "STATE_INTRO":
-                    elapsed = 4.0 - self.intro_timer
+                    elapsed = 6.3 - self.intro_timer
                 else:
                     elapsed = 5.0 - self.loading_timer
                 expected_frame = int(elapsed * self.video_fps)
@@ -1026,44 +1035,78 @@ class Game:
         if self.state == "STATE_PAUSED":
             self.pause_menu.draw(self.screen)
         elif self.state == "STATE_KO":
-            # Letter-by-letter "FAHHHHHHHHH" reveal
+            # ══ AAA Animated "FAHHHH" Typography ══
             import math
             elapsed = 5.0 - self.ko_timer
             full_text = "FAHHHHHHHHH"
-            # Each letter appears every 50ms
-            chars_shown = min(len(full_text), int(elapsed / 0.05))
-            display_text = full_text[:chars_shown]
-            
-            if chars_shown > 0:
-                # Main font
-                ko_font = pygame.font.Font(None, 100)
-                
-                # Fiery glow layer
-                glow_font = pygame.font.Font(None, 106)
-                glow_color = (255, max(0, int(60 + 40 * math.sin(elapsed * 8))), 10)
-                glow_surf = glow_font.render(display_text, True, glow_color)
-                glow_alpha_surf = pygame.Surface(glow_surf.get_size(), pygame.SRCALPHA)
-                glow_alpha_surf.blit(glow_surf, (0, 0))
-                glow_alpha_surf.set_alpha(90)
-                gx = SCREEN_W // 2 - glow_alpha_surf.get_width() // 2
-                gy = SCREEN_H // 2 - glow_alpha_surf.get_height() // 2 - 20
-                self.screen.blit(glow_alpha_surf, (gx - 3, gy - 3))
-                
-                # Shadow
-                shadow_color = (40, 5, 0)
-                shadow_surf = ko_font.render(display_text, True, shadow_color)
-                sx = SCREEN_W // 2 - shadow_surf.get_width() // 2
-                sy = SCREEN_H // 2 - shadow_surf.get_height() // 2 - 20
-                self.screen.blit(shadow_surf, (sx + 4, sy + 4))
-                
-                # Main text — bright fire color
-                r = max(0, min(255, int(230 + 25 * math.sin(elapsed * 6))))
-                g = max(0, min(255, int(50 + 60 * math.sin(elapsed * 6 + 1.5))))
-                main_color = (r, g, 15)
-                main_surf = ko_font.render(display_text, True, main_color)
-                mx = SCREEN_W // 2 - main_surf.get_width() // 2
-                my = SCREEN_H // 2 - main_surf.get_height() // 2 - 20
-                self.screen.blit(main_surf, (mx, my))
+            ko_font = pygame.font.Font(None, 120)
+            letter_spacing = 58
+            total_w = len(full_text) * letter_spacing
+            base_x_start = (SCREEN_W // 2) - (total_w // 2)
+            base_y = (SCREEN_H // 2) - 40
+            anim_end_time = len(full_text) * 0.065 + 0.5
+
+            for i, char in enumerate(full_text):
+                spawn_time = i * 0.065
+                if elapsed < spawn_time:
+                    continue
+                age = elapsed - spawn_time
+
+                # ── Impact Scale ("The Slam") ──
+                if age < 0.15:
+                    scale_factor = 3.0 - (2.0 * (age / 0.15))
+                else:
+                    scale_factor = 1.0
+
+                # ── Molten Core Color Lerp ──
+                if age < 0.1:
+                    t = age / 0.1
+                    cr = 255
+                    cg = int(255 - 155 * t)
+                    cb = int(255 - 155 * t)
+                elif age < 0.4:
+                    t = (age - 0.1) / 0.3
+                    cr = 255
+                    cg = int(100 - 80 * t)
+                    cb = 0
+                else:
+                    cr = int(max(180, 255 - (age - 0.4) * 200))
+                    cg = 20
+                    cb = 20
+                current_color = (max(0, min(255, cr)), max(0, min(255, cg)), max(0, min(255, cb)))
+
+                # ── Impact Jitter ──
+                if elapsed < anim_end_time:
+                    jx = random.randint(-3, 3) * max(1.0, scale_factor * 0.5)
+                    jy = random.randint(-3, 3) * max(1.0, scale_factor * 0.5)
+                    angle = random.uniform(-4, 4)
+                else:
+                    jx, jy, angle = 0, 0, 0
+
+                # ── Render Letter ──
+                base_surf = ko_font.render(char, True, current_color)
+
+                # Rotation
+                if abs(angle) > 0.5:
+                    base_surf = pygame.transform.rotate(base_surf, angle)
+
+                # Impact scaling
+                if scale_factor > 1.01:
+                    new_w = int(base_surf.get_width() * scale_factor)
+                    new_h = int(base_surf.get_height() * scale_factor)
+                    base_surf = pygame.transform.smoothscale(base_surf, (max(1, new_w), max(1, new_h)))
+
+                # Position (centered on letter slot)
+                lx = base_x_start + i * letter_spacing
+                rect = base_surf.get_rect(center=(lx + int(jx), base_y + int(jy)))
+
+                # Shadow pass
+                shadow_surf = ko_font.render(char, True, (30, 5, 0))
+                shadow_rect = shadow_surf.get_rect(center=(lx + 4, base_y + 4))
+                self.screen.blit(shadow_surf, shadow_rect)
+
+                # Main pass
+                self.screen.blit(base_surf, rect)
         elif self.state == "STATE_GAME_OVER":
             if self.is_draw:
                 winner_name = "DRAW"

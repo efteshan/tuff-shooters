@@ -1318,7 +1318,7 @@ class SkeletalBody:
                     self.muzzle_y = gy + 4 - int(recoil_kick_f * 4)
 
             elif cw == 'shotgun':
-                gy = arm_y + 4
+                gy = arm_y - 4
                 tilt = recoil_kick_f * 20
                 tilt = tilt if not flip else -tilt
                 sg_img = self.shotgun_surf if not flip else self.shotgun_surf_f 
@@ -1355,7 +1355,7 @@ class SkeletalBody:
 
         # 6. Gun (One-handed Pistol, in front of Front Arm)
         if self.knife_phase == 0 and cw == 'pistol':
-            gy = head_y + 10
+            gy = head_y + 17
             
             tilt = 0
             if getattr(self, 'is_aiming', False):

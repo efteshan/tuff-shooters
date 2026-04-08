@@ -178,10 +178,10 @@ SHOTGUN_PICKUP_LIFETIME = 10.0 # seconds shotgun stays on ground before despawn
 SHOTGUN_ICON_COLOR    = (180, 80, 30)  # orange-brown for HUD icon
 
 # ── BAZOOKA ──────────────────────────────────
-BAZOOKA_SPEED         = 450
-BAZOOKA_DAMAGE        = 25     # Direct hit damage
-BAZOOKA_SPLASH_DAMAGE = 15     # Splash damage
-BAZOOKA_SPLASH_RADIUS = 120
+BAZOOKA_SPEED         = 750
+BAZOOKA_DAMAGE        = 42     # Direct hit damage
+BAZOOKA_SPLASH_DAMAGE = 25     # Splash damage
+BAZOOKA_SPLASH_RADIUS = 150
 BAZOOKA_COOLDOWN      = 1.5
 BAZOOKA_AMMO          = 3
 BAZOOKA_PICKUP_LIFETIME = 10.0
@@ -201,10 +201,10 @@ HEALTH_SPAWN_MIN     = 18.0
 HEALTH_SPAWN_MAX     = 25.0
 AMMO_SPAWN_MIN       = 8.0
 AMMO_SPAWN_MAX       = 12.0
-AMMO_PACK_LIFETIME_MIN = 3.0
-AMMO_PACK_LIFETIME_MAX = 5.0
-MEDKIT_LIFETIME_MIN    = 8.0
-MEDKIT_LIFETIME_MAX    = 12.0
+AMMO_PACK_LIFETIME_MIN = 6.0
+AMMO_PACK_LIFETIME_MAX = 8.0
+MEDKIT_LIFETIME_MIN    = 5.0
+MEDKIT_LIFETIME_MAX    = 7.0
 
 # ═══════════════════════════════════════════════════════════════
 # CUSTOM PICKUP IMAGE SIZES — Change to resize custom images

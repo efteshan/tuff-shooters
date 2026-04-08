@@ -2,8 +2,12 @@
     "venvPath": ".",
     "venv": ".venv",
     "pythonVersion": "3.12",
-    "root": ".",
-    "extraPaths": ["."],
+    "executionEnvironments": [
+        {
+            "root": ".",
+            "extraPaths": ["."]
+        }
+    ],
     "reportMissingImports": "none",
     "reportMissingModuleSource": "none",
     "reportGeneralTypeIssues": "none",

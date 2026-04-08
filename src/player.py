@@ -138,9 +138,9 @@ class Player(PhysicsObject, pygame.sprite.Sprite):
                     # R1 (Button 5)
                     if j.get_numbuttons() > 5 and j.get_button(5): return True
                 elif action == "dash":
-                    # L2 (Axis 4) / A/Cross (Button 0)
+                    # L2 (Axis 4) / X/Square (Button 2)
                     if j.get_numaxes() > 4 and j.get_axis(4) > 0.1: return True
-                    if j.get_numbuttons() > 0 and j.get_button(0): return True
+                    if j.get_numbuttons() > 2 and j.get_button(2): return True
                 elif action == "knife":
                     # L1/Left Bumper (Button 4) — stabbing
                     if j.get_numbuttons() > 4 and j.get_button(4): return True
